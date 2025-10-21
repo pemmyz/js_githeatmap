@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Contributions Heatmap ✨</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <header>
+        <div class="header-left">
+            <h1>Contributions Heatmap ✨</h1>
+            <div id="total-contributions-container">
+                Total Contributions: <span id="total-contributions">0</span>
+            </div>
+        </div>
+        <div class="header-right">
+            <button id="game-mode-toggle" aria-label="Toggle Game Mode" title="Toggle Game Mode (T)">🎮 Game</button>
+            <button id="theme-toggle" aria-label="Toggle Dark/Light Theme" title="Toggle Dark/Light Theme">☀️</button>
+        </div>
+    </header>
+
+    <main>
+        <aside id="tools-panel">
+            <section class="panel-section">
+                <h3>Tools</h3>
+                <div class="toolbar">
+                    <button class="tool-btn" data-tool="pencil" aria-pressed="true" title="Pencil (P)"><svg viewBox="0 0 24 24"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.13,5.12L18.88,8.87M3,17.25V21H6.75L17.81,9.94L14.06,6.19L3,17.25Z" /></svg></button>
+                    <button class="tool-btn" data-tool="rect" aria-pressed="false" title="Rectangle Fill (R)"><svg viewBox="0 0 24 24"><path d="M3,3V21H21V3H3M19,19H5V5H19V19Z" /></svg></button>
+                    <button class="tool-btn" data-tool="eraser" aria-pressed="false" title="Eraser (E)"><svg viewBox="0 0 24 24"><path d="M16.24,3.56L21.19,8.5C21.58,8.89 21.58,9.5 21.19,9.9L12.44,18.65C12.05,19.04 11.41,19.04 11.03,18.65L2.81,10.44C2.42,10.05 2.42,9.41 2.81,9.03L7.76,4.06C8.15,3.67 8.79,3.67 9.17,4.06L11.74,6.63L15.5,2.88C15.88,2.5 16.5,2.5 16.89,2.88L17.56,3.56H16.24M9.88,5.47L4.22,11.12L11.74,18.65L17.4,13L9.88,5.47Z" /></svg></button>
+                    <button class="tool-btn" data-tool="picker" aria-pressed="false" title="Picker (I)"><svg viewBox="0 0 24 24"><path d="M19.35,11.6L17.88,10.13C17.96,9.44 18,8.73 18,8C18,4.69 15.31,2 12,2C8.69,2 6,4.69 6,8C6,11.31 8.69,14 12,14C12.73,14 13.44,13.96 14.13,13.88L15.6,15.35L12,19V22H15L21.22,15.78C21.66,15.34 21.66,14.63 21.22,14.19L19.35,11.6M12,12C9.79,12 8,10.21 8,8C8,5.79 9.79,4 12,4C14.21,4 16,5.79 16,8C16,10.21 14.21,12 12,12Z" /></svg></button>
+                </div>
+            </section>
+            
+            <section class="panel-section">
+                <h3>Brush</h3>
+                <div class="brush-mode-toggle">
+                    <label><input type="radio" name="brush-mode" value="level" checked> Set Level</label>
+                    <label><input type="radio" name="brush-mode" value="add"> Add +N</label>
+                    <input type="number" id="brush-add-n" value="1" min="1" title="Contributions to add (A to toggle mode)">
+                </div>
+                <div id="brush-levels" class="level-selector">
+                    <button class="level-btn" data-level="0" title="Level 0 (Shortcut: 1)">0</button>
+                    <button class="level-btn" data-level="1" title="Level 1 (Shortcut: 2)">1</button>
+                    <button class="level-btn" data-level="2" title="Level 2 (Shortcut: 3)">2</button>
+                    <button class="level-btn" data-level="3" title="Level 3 (Shortcut: 4)">3</button>
+                    <button class="level-btn" data-level="4" title="Level 4 (Shortcut: 5)">4</button>
+                </div>
+            </section>
+
+            <section class="panel-section">
+                <h3>Palette</h3>
+                <div class="palette-editor">
+                    <input type="color" id="palette-color-0" data-level="0" title="Level 0 Color">
+                    <input type="color" id="palette-color-1" data-level="1" title="Level 1 Color">
+                    <input type="color" id="palette-color-2" data-level="2" title="Level 2 Color">
+                    <input type="color" id="palette-color-3" data-level="3" title="Level 3 Color">
+                    <input type="color" id="palette-color-4" data-level="4" title="Level 4 Color">
+                </div>
+                <select id="palette-preset" title="Choose a color preset">
+                    <option value="classic">Classic Green</option>
+                    <option value="arc">Arc Green</option>
+                </select>
+            </section>
+
+            <section class="panel-section">
+                <h3>Level Thresholds</h3>
+                <div class="thresholds" title="Set min contributions for levels 1-4. Level 0 is always 0.">
+                    <label>1+<input type="number" id="threshold-1" data-level="1" min="1" value="1"></label>
+                    <label>2+<input type="number" id="threshold-2" data-level="2" min="2" value="4"></label>
+                    <label>3+<input type="number" id="threshold-3" data-level="3" min="3" value="8"></label>
+                    <label>4+<input type="number" id="threshold-4" data-level="4" min="4" value="13"></label>
+                </div>
+            </section>
+
+            <section class="panel-section">
+                <h3>Data</h3>
+                <div class="io-buttons">
+                    <button id="import-json">Import JSON</button>
+                    <button id="export-json">Export JSON</button>
+                    <button id="import-csv">Import CSV</button>
+                    <button id="export-csv">Export CSV</button>
+                </div>
+                <input type="file" id="file-input" accept=".json,.csv,image/*" hidden>
+            </section>
+            
+            <section class="panel-section">
+                <h3>Image Legend</h3>
+                <button id="load-image-legend">Load Image</button>
+                <div id="image-legend-controls" class="hidden">
+                    <label>Opacity: <input type="range" id="image-opacity" min="0" max="1" step="0.05" value="0.3"></label>
+                    <label>Threshold: <input type="range" id="image-threshold" min="0" max="255" step="1" value="128"></label>
+                    <button id="apply-image-legend">Apply to Frame</button>
+                    <button id="clear-image-legend">Clear Image</button>
+                </div>
+            </section>
+        </aside>
+
+        <div id="main-content">
+            <div id="heatmap-container">
+                <div class="heatmap-labels-top">
+                    <span class="heatmap-month-label"></span>
+                </div>
+                <div class="heatmap-body">
+                    <div class="heatmap-labels-left">
+                        <span>S</span><span>M</span><span>T</span><span>W</span><span>T</span><span>F</span><span>S</span>
+                    </div>
+                    <canvas id="heatmap-canvas"></canvas>
+                </div>
+            </div>
+            <div id="game-hud" class="hidden">
+                <div class="game-hud-item">Score: <span id="game-score">0</span></div>
+                <div class="game-controls">
+                    <label>Difficulty: <input type="range" id="game-difficulty" min="1" max="10" value="3"></label>
+                    <button id="game-pause">Pause (P)</button>
+                    <button id="game-reset">Reset</button>
+                </div>
+                <div class="game-options">
+                    <label><input type="checkbox" id="game-write-heatmap" checked> Write explosions to heatmap</label>
+                </div>
+            </div>
+        </div>
+
+        <aside id="timeline-panel">
+            <section class="panel-section">
+                <h3>Animation</h3>
+                <div class="timeline-controls">
+                    <label>FPS: <input type="range" id="anim-fps" min="1" max="30" value="10"></label>
+                    <button id="anim-play" title="Play/Pause Animation"><svg viewBox="0 0 24 24"><path d="M8,5.14V19.14L19,12.14L8,5.14Z"/></svg></button>
+                    <label title="Show previous frame as an overlay (Onion Skin)">
+                        <input type="checkbox" id="anim-onion-skin"> Onion Skin
+                    </label>
+                </div>
+            </section>
+            <section class="panel-section">
+                <h3>Frames</h3>
+                <div id="frames-list"></div>
+                <div class="frame-actions">
+                    <button id="frame-new" title="New Blank Frame">+</button>
+                    <button id="frame-duplicate" title="Duplicate Selected Frame">📄</button>
+                    <button id="frame-delete" title="Delete Selected Frame">🗑️</button>
+                </div>
+            </section>
+            <section class="panel-section">
+                <h3>Export Animation</h3>
+                <div class="export-buttons">
+                    <button id="export-frame-png">Current as PNG</button>
+                    <button id="export-frame-webp">Current as WEBP</button>
+                    <button id="export-anim">Animation (PNGs)</button>
+                </div>
+                <div id="export-anim-warning" class="hidden">This will trigger multiple downloads.</div>
+            </section>
+        </aside>
+    </main>
+
+    <footer>
+        <p>Shortcuts: [1-5] Levels | [P] Pencil | [R] Rect | [E] Eraser | [I] Picker | [A] Toggle Add/Set | [G] Grid | [T] Game Mode | [Ctrl+Z] Undo | [Ctrl+Y] Redo</p>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>
