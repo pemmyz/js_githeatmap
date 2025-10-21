@@ -146,12 +146,16 @@
                     <button id="frame-duplicate" title="Duplicate Selected Frame">📄</button>
                     <button id="frame-delete" title="Delete Selected Frame">🗑️</button>
                 </div>
-                <!-- --- NEW: Frame shifting controls --- -->
                 <div class="frame-move-controls">
-                    <button id="frame-move-up" title="Shift frame content up">&uarr;</button>
-                    <button id="frame-move-down" title="Shift frame content down">&darr;</button>
-                    <button id="frame-move-left" title="Shift frame content left">&larr;</button>
-                    <button id="frame-move-right" title="Shift frame content right">&rarr;</button>
+                    <div class="frame-move-buttons">
+                        <button id="frame-move-up" title="Shift frame content up">&uarr;</button>
+                        <button id="frame-move-down" title="Shift frame content down">&darr;</button>
+                        <button id="frame-move-left" title="Shift frame content left">&larr;</button>
+                        <button id="frame-move-right" title="Shift frame content right">&rarr;</button>
+                    </div>
+                    <label title="Pixels moved off one side will reappear on the opposite side">
+                        <input type="checkbox" id="frame-shift-wrap"> Wrap
+                    </label>
                 </div>
             </section>
             <section class="panel-section">
@@ -160,8 +164,9 @@
                     <button id="export-frame-png">Current as PNG</button>
                     <button id="export-frame-webp">Current as WEBP</button>
                     <button id="export-anim">Animation (PNGs)</button>
+                    <button id="export-anim-webp">Animation (WEBP)</button>
+                    <button id="export-anim-gif">Animation (GIF)</button>
                 </div>
-                <!-- --- NEW: Checkbox to include labels in export --- -->
                 <div class="export-options">
                     <label><input type="checkbox" id="export-include-labels"> Include Labels</label>
                 </div>
@@ -174,6 +179,9 @@
         <p>Shortcuts: [1-5] Levels | [P] Pencil | [R] Rect | [E] Eraser | [I] Picker | [A] Toggle Add/Set | [G] Grid | [T] Game Mode | [Ctrl+Z] Undo | [Ctrl+Y] Redo</p>
     </footer>
 
+    <!-- These scripts must be in your project folder -->
+    <script src="gif.js"></script>
+    <script src="webp.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

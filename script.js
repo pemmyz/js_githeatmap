@@ -317,9 +317,7 @@ document.addEventListener('DOMContentLoaded', () => {
         const y = e.clientY - rect.top;
         const c = Math.floor(x / (cellSize + gap));
         const r = Math.floor(y / (cellSize + gap));
-        if (c >= 0 && c < COLS && r >= 0 && r < ROWS) {
-            return { c, r };
-        }
+        if (c >= 0 && c < COLS && r >= 0 && r < ROWS) { return { c, r }; }
         return null;
     }
     
@@ -412,7 +410,6 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.strokeRect(x - 1, y - 1, w + 2, h + 2);
     }
     
-    // --- UI UPDATES & EVENT LISTENERS ---
     function setupEventListeners() {
         window.addEventListener('resize', debounce(resizeCanvas, 200));
         themeToggle.addEventListener('click', toggleTheme);
@@ -421,7 +418,6 @@ document.addEventListener('DOMContentLoaded', () => {
         canvas.addEventListener('pointermove', handlePointerMove);
         canvas.addEventListener('pointerup', handlePointerUp);
         canvas.addEventListener('pointerleave', () => { isDrawing = false; selection.active=false; render(); });
-
         $('.toolbar').addEventListener('click', e => {
             const btn = e.target.closest('.tool-btn');
             if (btn) {
@@ -491,16 +487,15 @@ document.addEventListener('DOMContentLoaded', () => {
         $('#frame-new').addEventListener('click', newFrame);
         $('#frame-duplicate').addEventListener('click', duplicateFrame);
         $('#frame-delete').addEventListener('click', deleteFrame);
-
-        // --- NEW: Frame shifting event listeners ---
         $('#frame-move-up').addEventListener('click', () => shiftFrame(0, -1));
         $('#frame-move-down').addEventListener('click', () => shiftFrame(0, 1));
         $('#frame-move-left').addEventListener('click', () => shiftFrame(-1, 0));
         $('#frame-move-right').addEventListener('click', () => shiftFrame(1, 0));
-
         $('#export-frame-png').addEventListener('click', () => exportFrame('image/png'));
         $('#export-frame-webp').addEventListener('click', () => exportFrame('image/webp'));
         $('#export-anim').addEventListener('click', exportAnimation);
+        $('#export-anim-webp').addEventListener('click', exportAnimationWEBP);
+        $('#export-anim-gif').addEventListener('click', exportAnimationGIF);
         $('#game-difficulty').addEventListener('input', e => state.game.difficulty = parseInt(e.target.value));
         $('#game-pause').addEventListener('click', () => { state.game.paused = !state.game.paused; });
         $('#game-reset').addEventListener('click', initGame);
@@ -509,41 +504,24 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function updateUIFromState() {
-        updateToolUI();
-        updateBrushUI();
-        updatePaletteUI();
-        updateThresholdsUI();
-        updateFramesUI();
-        updateTotalContributions();
+        updateToolUI(); updateBrushUI(); updatePaletteUI(); updateThresholdsUI(); updateFramesUI(); updateTotalContributions();
         $('#anim-fps').value = state.animation.fps;
         $('#anim-onion-skin').checked = state.animation.onionSkin;
     }
-
-    function updateToolUI() {
-        $$('.tool-btn').forEach(b => b.setAttribute('aria-pressed', b.dataset.tool === state.currentTool));
-    }
-    
+    function updateToolUI() { $$('.tool-btn').forEach(b => b.setAttribute('aria-pressed', b.dataset.tool === state.currentTool)); }
     function updateBrushUI() {
         $$('.level-btn').forEach(b => b.style.outline = b.dataset.level == state.brush.level ? `2px solid ${getComputedStyle(document.body).getPropertyValue('--accent-color')}` : 'none');
         $('input[name="brush-mode"][value="'+state.brush.mode+'"]').checked = true;
         $('#brush-add-n').value = state.brush.addN;
     }
-
     function updatePaletteUI() {
         for (let i = 0; i < 5; i++) {
             $(`#palette-color-${i}`).value = state.palette[i];
             const btn = $(`.level-btn[data-level="${i}"]`);
-            if (btn) {
-                document.documentElement.style.setProperty(`--level-${i}-bg`, state.palette[i]);
-            }
+            if (btn) { document.documentElement.style.setProperty(`--level-${i}-bg`, state.palette[i]); }
         }
     }
-
-    function updateThresholdsUI() {
-        for (let i = 1; i <= 4; i++) {
-            $(`#threshold-${i}`).value = state.thresholds[i - 1];
-        }
-    }
+    function updateThresholdsUI() { for (let i = 1; i <= 4; i++) { $(`#threshold-${i}`).value = state.thresholds[i - 1]; } }
     
     function debounce(func, wait) {
         let timeout;
@@ -575,13 +553,10 @@ document.addEventListener('DOMContentLoaded', () => {
             if (e.key === 'y') { e.preventDefault(); redo(); }
         }
         if (state.game.active && !state.game.paused) {
-            if (['w', 'ArrowUp', 'a', 'ArrowLeft', 's', 'ArrowDown', 'd', 'ArrowRight', ' '].includes(e.key)) {
-                e.preventDefault();
-            }
+            if (['w', 'ArrowUp', 'a', 'ArrowLeft', 's', 'ArrowDown', 'd', 'ArrowRight', ' '].includes(e.key)) { e.preventDefault(); }
         }
     }
 
-    // --- THEME ---
     function applyTheme(theme) {
         document.body.classList.toggle('dark-mode', theme === 'dark');
         themeToggle.textContent = theme === 'dark' ? '☀️' : '🌙';
@@ -593,7 +568,6 @@ document.addEventListener('DOMContentLoaded', () => {
         applyTheme(newTheme);
     }
     
-    // --- IMPORT / EXPORT ---
     function openFilePicker(type) {
         const fileInput = $('#file-input');
         fileInput.accept = type;
@@ -662,20 +636,15 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadFile(dataStr, "heatmap.csv");
     }
 
-    // --- NEW: Helper function to draw a frame with labels for export ---
     function drawFrameWithLabels(tempCtx, cells) {
-        const dpr = window.devicePixelRatio || 1;
         const PADDING = 30;
         const gridW = (cellSize + gap) * COLS - gap;
         const gridH = (cellSize + gap) * ROWS - gap;
-        tempCtx.canvas.width = (gridW + PADDING) * dpr;
-        tempCtx.canvas.height = (gridH + PADDING) * dpr;
-        tempCtx.scale(dpr, dpr);
+        tempCtx.canvas.width = gridW + PADDING;
+        tempCtx.canvas.height = gridH + PADDING;
         tempCtx.imageSmoothingEnabled = false;
-
         tempCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg-color');
         tempCtx.fillRect(0, 0, tempCtx.canvas.width, tempCtx.canvas.height);
-
         tempCtx.font = '10px ' + getComputedStyle(document.body).getPropertyValue('--font-family');
         tempCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--muted-color');
         tempCtx.textAlign = 'left';
@@ -685,7 +654,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const y = PADDING + i * (cellSize + gap) + cellSize / 2;
             tempCtx.fillText(label, 0, y);
         });
-        
         const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
         let lastMonth = -1;
         for (let c = 0; c < COLS; c++) {
@@ -698,7 +666,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 lastMonth = month;
             }
         }
-        
         for (let c = 0; c < COLS; c++) {
             for (let r = 0; r < ROWS; r++) {
                 const cell = cells[c][r];
@@ -711,24 +678,20 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    function exportFrame(format = 'image/png') {
+    function createFrameCanvas(cells, includeLabels) {
         const tempCanvas = document.createElement('canvas');
         const tempCtx = tempCanvas.getContext('2d');
-        const includeLabels = $('#export-include-labels').checked;
-
         if (includeLabels) {
-            drawFrameWithLabels(tempCtx, state.cells);
+            drawFrameWithLabels(tempCtx, cells);
         } else {
-            const dpr = window.devicePixelRatio || 1;
-            tempCanvas.width = canvas.width;
-            tempCanvas.height = canvas.height;
-            tempCtx.scale(dpr, dpr);
+            tempCanvas.width = (cellSize + gap) * COLS - gap;
+            tempCanvas.height = (cellSize + gap) * ROWS - gap;
             tempCtx.imageSmoothingEnabled = false;
             tempCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg-color');
             tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
             for (let c = 0; c < COLS; c++) {
                 for (let r = 0; r < ROWS; r++) {
-                    const cell = state.cells[c][r];
+                    const cell = cells[c][r];
                     if (!cell) continue;
                     const x = c * (cellSize + gap);
                     const y = r * (cellSize + gap);
@@ -737,54 +700,138 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         }
+        return tempCanvas;
+    }
 
-        const dataURL = tempCanvas.toDataURL(format);
+    function exportFrame(format = 'image/png') {
+        const includeLabels = $('#export-include-labels').checked;
+        const frameCanvas = createFrameCanvas(state.cells, includeLabels);
+        const dataURL = frameCanvas.toDataURL(format);
         const ext = format.split('/')[1];
         downloadFile(dataURL, `frame-${state.currentFrameIndex}.${ext}`);
     }
 
     function exportAnimation() {
         if (state.frames.length === 0) return;
-        $('#export-anim-warning').classList.remove('hidden');
+        const warningEl = $('#export-anim-warning');
+        warningEl.textContent = "This will trigger multiple downloads.";
+        warningEl.classList.remove('hidden');
         const includeLabels = $('#export-include-labels').checked;
         let frameIndex = 0;
         const downloadNextFrame = () => {
             if (frameIndex >= state.frames.length) {
-                $('#export-anim-warning').classList.add('hidden');
+                warningEl.classList.add('hidden');
                 return;
             }
             const frame = state.frames[frameIndex];
-            const tempCanvas = document.createElement('canvas');
-            const tempCtx = tempCanvas.getContext('2d');
-
-            if (includeLabels) {
-                drawFrameWithLabels(tempCtx, frame.cells);
-            } else {
-                 const dpr = window.devicePixelRatio || 1;
-                tempCanvas.width = (cellSize + gap) * COLS - gap * dpr;
-                tempCanvas.height = (cellSize + gap) * ROWS - gap * dpr;
-                tempCtx.scale(dpr, dpr);
-                tempCtx.imageSmoothingEnabled = false;
-                tempCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg-color');
-                tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-                for (let c = 0; c < COLS; c++) {
-                    for (let r = 0; r < ROWS; r++) {
-                        const cell = frame.cells[c][r];
-                        if (!cell) continue;
-                        const x = c * (cellSize + gap);
-                        const y = r * (cellSize + gap);
-                        const mainColor = state.palette[cell.level];
-                        drawCrispCell(tempCtx, x, y, cellSize, mainColor, cell.level);
-                    }
-                }
-            }
-
-            const dataURL = tempCanvas.toDataURL('image/png');
+            const frameCanvas = createFrameCanvas(frame.cells, includeLabels);
+            const dataURL = frameCanvas.toDataURL('image/png');
             downloadFile(dataURL, `anim-frame-${String(frameIndex).padStart(3, '0')}.png`);
             frameIndex++;
             setTimeout(downloadNextFrame, 200);
         };
         downloadNextFrame();
+    }
+
+    async function exportAnimationWEBP() {
+        if (state.frames.length <= 1) { return alert("Animation requires at least 2 frames."); }
+        const warningEl = $('#export-anim-warning');
+        const exportButtons = $$('.export-buttons button, #export-anim-webp');
+        const includeLabels = $('#export-include-labels').checked;
+        const frameDuration = 1000 / state.animation.fps;
+        try {
+            warningEl.textContent = `Processing ${state.frames.length} frames...`;
+            warningEl.classList.remove('hidden');
+            exportButtons.forEach(b => b.disabled = true);
+            
+            const writer = new WebPWriter();
+            
+            for (const frame of state.frames) {
+                const frameCanvas = createFrameCanvas(frame.cells, includeLabels);
+                writer.addFrame(frameCanvas.toDataURL('image/webp', {quality: 0.8}), { duration: frameDuration });
+            }
+            
+            warningEl.textContent = "Encoding WEBP... Please wait.";
+            const webpBlob = await writer.complete({ loop: 0 }); 
+
+            const url = URL.createObjectURL(webpBlob);
+            downloadFile(url, 'animation.webp');
+            URL.revokeObjectURL(url);
+
+        } catch (error) {
+            console.error("Failed to export WEBP:", error);
+            warningEl.textContent = "Error exporting WEBP. See console for details.";
+        } finally {
+            warningEl.classList.add('hidden');
+            exportButtons.forEach(b => b.disabled = false);
+        }
+    }
+
+    async function exportAnimationGIF() {
+        if (state.frames.length <= 1) { return alert("Animation requires at least 2 frames."); }
+        const warningEl = $('#export-anim-warning');
+        const exportButtons = $$('.export-buttons button, #export-anim-gif');
+        const includeLabels = $('#export-include-labels').checked;
+        const frameDelay = 1000 / state.animation.fps;
+
+        try {
+            console.log("Starting GIF export...");
+            warningEl.textContent = `Processing GIF... This may take a while.`;
+            warningEl.classList.remove('hidden');
+            exportButtons.forEach(b => b.disabled = true);
+            
+            const gif = new GIF({ 
+                workers: 2, 
+                quality: 10, 
+                workerScript: 'gif.worker.js' 
+            });
+
+            gif.on('progress', function(p) {
+                const progressPercent = Math.round(p * 100);
+                warningEl.textContent = `Encoding GIF... ${progressPercent}%`;
+                console.log(`GIF encoding progress: ${progressPercent}%`);
+            });
+
+            console.log(`Adding ${state.frames.length} frames to GIF object...`);
+            for (const [index, frame] of state.frames.entries()) {
+                const frameCanvas = createFrameCanvas(frame.cells, includeLabels);
+                gif.addFrame(frameCanvas, { delay: frameDelay });
+                console.log(`Added frame ${index + 1}/${state.frames.length}`);
+            }
+            
+            warningEl.textContent = "Starting GIF render process...";
+            console.log("All frames added. Calling gif.render()...");
+
+            await new Promise((resolve, reject) => {
+                gif.on('finished', (blob) => {
+                    console.log("GIF rendering finished successfully.");
+                    try {
+                        const url = URL.createObjectURL(blob);
+                        downloadFile(url, 'animation.gif');
+                        URL.revokeObjectURL(url);
+                        resolve();
+                    } catch (e) {
+                        console.error("Error creating or downloading GIF blob.", e);
+                        reject(e);
+                    }
+                });
+
+                gif.on('abort', () => {
+                    console.error("GIF encoding was aborted.");
+                    reject(new Error("GIF encoding aborted."));
+                });
+
+                gif.render();
+            });
+
+        } catch (error) {
+            console.error("Failed to export GIF:", error);
+            warningEl.textContent = "Error exporting GIF. Check console for details.";
+        } finally {
+            console.log("GIF export process finished or failed. Cleaning up.");
+            warningEl.classList.add('hidden');
+            exportButtons.forEach(b => b.disabled = false);
+        }
     }
 
     function downloadFile(data, filename) {
@@ -794,7 +841,6 @@ document.addEventListener('DOMContentLoaded', () => {
         link.click();
     }
     
-    // --- IMAGE LEGEND ---
     function loadImageLegend(dataURL) {
         const img = new Image();
         img.onload = () => {
@@ -837,9 +883,7 @@ document.addEventListener('DOMContentLoaded', () => {
         render();
     }
 
-    // --- ANIMATION & FRAMES ---
     let dragSrcElement = null;
-    
     function updateFramesUI() {
         const list = $('#frames-list');
         list.innerHTML = '';
@@ -866,7 +910,6 @@ document.addEventListener('DOMContentLoaded', () => {
             list.appendChild(item);
         });
     }
-
     function handleDragStart(e) {
         dragSrcElement = this;
         e.dataTransfer.effectAllowed = 'move';
@@ -893,7 +936,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     function handleDragEnd(e) { this.classList.remove('dragging'); }
-
     function drawThumbnail(canvas, cells) {
         const thumbCtx = canvas.getContext('2d');
         const thumbCellSize = 2;
@@ -908,11 +950,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     }
-
-    function createFrame() {
-        return { cells: JSON.parse(JSON.stringify(state.cells)) };
-    }
-
+    function createFrame() { return { cells: JSON.parse(JSON.stringify(state.cells)) }; }
     function syncFrameAndCells(fromFrameToCells = false) {
         if(state.frames.length === 0 || !state.frames[state.currentFrameIndex]) return;
         if (fromFrameToCells) {
@@ -921,51 +959,56 @@ document.addEventListener('DOMContentLoaded', () => {
             state.frames[state.currentFrameIndex] = createFrame();
         }
     }
-
-    // --- NEW: Function to shift cell data in the current frame ---
+    
+    // --- START: MODIFIED FUNCTION ---
     function shiftFrame(dx, dy) {
         pushUndoState();
+        const wrap = $('#frame-shift-wrap').checked;
+        
         const currentFrame = state.frames[state.currentFrameIndex];
         const originalCells = JSON.parse(JSON.stringify(currentFrame.cells));
+        const newCells = JSON.parse(JSON.stringify(originalCells));
         
-        // Create a new blank grid to prevent overwriting issues
-        const newCells = Array.from({ length: COLS }, () => new Array(ROWS).fill(null));
-        const endDate = new Date();
-        const startDate = new Date();
-        startDate.setDate(endDate.getDate() - (COLS * ROWS - 1));
-        startDate.setDate(startDate.getDate() - startDate.getDay());
-        let tempDate = new Date(startDate);
-        for (let c = 0; c < COLS; c++) {
-            for(let r = 0; r < ROWS; r++) {
-                const date = new Date(tempDate);
-                date.setDate(tempDate.getDate() + (c * 7 + r));
-                 newCells[c][r] = {
-                    dateISO: date.toISOString().split('T')[0],
-                    count: 0,
-                    level: 0,
-                };
-            }
-        }
-
+        // Blank out the new grid first to clear old positions
         for (let c = 0; c < COLS; c++) {
             for (let r = 0; r < ROWS; r++) {
-                const newC = c + dx;
-                const newR = r + dy;
+                newCells[c][r].count = 0;
+                newCells[c][r].level = 0;
+            }
+        }
+        
+        // Copy each cell from its original position to the new position
+        for (let c = 0; c < COLS; c++) {
+            for (let r = 0; r < ROWS; r++) {
+                let newC, newR;
 
-                if (newC >= 0 && newC < COLS && newR >= 0 && newR < ROWS) {
-                    // Copy original cell data to the new position
+                if (wrap) {
+                    // Calculate wrapped coordinates using modulo.
+                    // Adding COLS/ROWS before the modulo handles negative results correctly.
+                    newC = (c + dx + COLS) % COLS;
+                    newR = (r + dy + ROWS) % ROWS;
+                } else {
+                    // Calculate normal, non-wrapping coordinates
+                    newC = c + dx;
+                    newR = r + dy;
+                }
+
+                // If wrapping, the destination is always valid.
+                // If not wrapping, check if the destination is within the grid bounds.
+                if (wrap || (newC >= 0 && newC < COLS && newR >= 0 && newR < ROWS)) {
                     newCells[newC][newR].count = originalCells[c][r].count;
                     newCells[newC][newR].level = originalCells[c][r].level;
                 }
             }
         }
-
+        
         currentFrame.cells = newCells;
-        syncFrameAndCells(true);
-        updateFramesUI();
-        render();
+        syncFrameAndCells(true); // Update main canvas from the modified frame data
+        updateFramesUI();      // Redraw thumbnails to reflect the change
+        render();              // Redraw the main canvas
         saveState();
     }
+    // --- END: MODIFIED FUNCTION ---
 
     function newFrame() {
         pushUndoState();
@@ -975,7 +1018,6 @@ document.addEventListener('DOMContentLoaded', () => {
         updateFramesUI();
         saveState();
     }
-
     function duplicateFrame() {
         if (state.frames.length === 0) return;
         pushUndoState();
@@ -985,7 +1027,6 @@ document.addEventListener('DOMContentLoaded', () => {
         updateFramesUI();
         saveState();
     }
-
     function deleteFrame() {
         if (state.frames.length <= 1) return;
         pushUndoState();
@@ -995,7 +1036,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         selectFrame(state.currentFrameIndex);
     }
-    
     function selectFrame(index) {
         if (index < 0 || index >= state.frames.length) return;
         state.currentFrameIndex = index;
@@ -1003,13 +1043,11 @@ document.addEventListener('DOMContentLoaded', () => {
         updateUIFromState();
         render();
     }
-    
     function toggleAnimation() {
         state.animation.playing = !state.animation.playing;
         $('#anim-play').innerHTML = state.animation.playing ? '<svg viewBox="0 0 24 24"><path d="M14,19H18V5H14M6,19H10V5H6V19Z"/></svg>' : '<svg viewBox="0 0 24 24"><path d="M8,5.14V19.14L19,12.14L8,5.14Z"/></svg>';
     }
 
-    // --- MAIN LOOP ---
     let lastTime = 0;
     function mainLoop(timestamp) {
         const deltaTime = timestamp - lastTime;
@@ -1029,11 +1067,9 @@ document.addEventListener('DOMContentLoaded', () => {
         requestAnimationFrame(mainLoop);
     }
 
-    // --- GAME MODE ---
     const keysPressed = {};
     document.addEventListener('keydown', (e) => keysPressed[e.key] = true);
     document.addEventListener('keyup', (e) => keysPressed[e.key] = false);
-
     function toggleGameMode() {
         state.game.active = !state.game.active;
         $('#main-content').classList.toggle('game-active', state.game.active);
@@ -1046,17 +1082,11 @@ document.addEventListener('DOMContentLoaded', () => {
             updateUIFromState();
         }
     }
-
     function initGame() {
-        state.game.score = 0;
-        state.game.paused = false;
-        state.game.player = { r: 3, c: 5 };
-        state.game.bullets = [];
-        state.game.enemies = [];
-        state.game.spawnTimer = 0;
+        state.game.score = 0; state.game.paused = false; state.game.player = { r: 3, c: 5 };
+        state.game.bullets = []; state.game.enemies = []; state.game.spawnTimer = 0;
         $('#game-score').textContent = 0;
     }
-    
     function updateGame(dt) {
         const playerSpeed = 0.01;
         if (keysPressed['w'] || keysPressed['ArrowUp']) state.game.player.r -= playerSpeed * dt;
@@ -1085,8 +1115,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.game.bullets = state.game.bullets.filter(b => {
             const hitEnemy = state.game.enemies.find(e => !e.hit && Math.abs(b.r - e.r) < 0.8 && Math.abs(b.c - e.c) < 0.8);
             if (hitEnemy) {
-                hitEnemy.hit = true;
-                scoreToAdd += 10;
+                hitEnemy.hit = true; scoreToAdd += 10;
                 if (state.game.writeToHeatmap) {
                     const cell = state.cells[Math.floor(hitEnemy.c)]?.[Math.floor(hitEnemy.r)];
                     if (cell) {
@@ -1106,7 +1135,6 @@ document.addEventListener('DOMContentLoaded', () => {
             syncFrameAndCells();
         }
     }
-
     function renderGame() {
         const getPixelPos = (r, c) => ({x: c * (cellSize + gap) + cellSize / 2, y: r * (cellSize + gap) + cellSize / 2});
         const pPos = getPixelPos(state.game.player.r, state.game.player.c);
