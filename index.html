@@ -103,7 +103,6 @@
                 </div>
                 <div class="heatmap-body">
                     <div class="heatmap-labels-left">
-                        <!-- --- CHANGE START: Show only Mon, Wed, Fri --- -->
                         <span></span>
                         <span>M</span>
                         <span></span>
@@ -111,7 +110,6 @@
                         <span></span>
                         <span>F</span>
                         <span></span>
-                        <!-- --- CHANGE END --- -->
                     </div>
                     <canvas id="heatmap-canvas"></canvas>
                 </div>
@@ -148,6 +146,13 @@
                     <button id="frame-duplicate" title="Duplicate Selected Frame">📄</button>
                     <button id="frame-delete" title="Delete Selected Frame">🗑️</button>
                 </div>
+                <!-- --- NEW: Frame shifting controls --- -->
+                <div class="frame-move-controls">
+                    <button id="frame-move-up" title="Shift frame content up">&uarr;</button>
+                    <button id="frame-move-down" title="Shift frame content down">&darr;</button>
+                    <button id="frame-move-left" title="Shift frame content left">&larr;</button>
+                    <button id="frame-move-right" title="Shift frame content right">&rarr;</button>
+                </div>
             </section>
             <section class="panel-section">
                 <h3>Export Animation</h3>
@@ -155,6 +160,10 @@
                     <button id="export-frame-png">Current as PNG</button>
                     <button id="export-frame-webp">Current as WEBP</button>
                     <button id="export-anim">Animation (PNGs)</button>
+                </div>
+                <!-- --- NEW: Checkbox to include labels in export --- -->
+                <div class="export-options">
+                    <label><input type="checkbox" id="export-include-labels"> Include Labels</label>
                 </div>
                 <div id="export-anim-warning" class="hidden">This will trigger multiple downloads.</div>
             </section>

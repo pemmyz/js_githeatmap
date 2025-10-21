@@ -27,7 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
         palette: [...PRESETS.classic],
         currentTool: 'pencil',
         brush: {
-            mode: 'level', // 'level' or 'add'
+            mode: 'level',
             level: 1,
             addN: 1,
         },
@@ -60,20 +60,16 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- INITIALIZATION ---
     function init() {
-        // Disable anti-aliasing for a crisp pixel look
         ctx.imageSmoothingEnabled = false;
-
         loadState();
         if (state.cells.length === 0) {
             generateGridData();
             state.frames.push(createFrame());
         }
         setupEventListeners();
-        
         resizeCanvas();
-        updateUIFromState(); 
+        updateUIFromState();
         applyTheme(localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
-        
         requestAnimationFrame(mainLoop);
     }
 
@@ -83,7 +79,6 @@ document.addEventListener('DOMContentLoaded', () => {
         let color = hex.startsWith('#') ? hex.slice(1) : hex;
         if (color.length === 3) color = color.split('').map(char => char + char).join('');
         if (color.length === 8) color = color.slice(0, 6);
-
         const num = parseInt(color, 16);
         let r = Math.max(0, (num >> 16) - amount);
         let g = Math.max(0, ((num >> 8) & 0x00FF) - amount);
@@ -96,7 +91,6 @@ document.addEventListener('DOMContentLoaded', () => {
         let color = hex.startsWith('#') ? hex.slice(1) : hex;
         if (color.length === 3) color = color.split('').map(char => char + char).join('');
         if (color.length === 8) color = color.slice(0, 6);
-
         const num = parseInt(color, 16);
         let r = Math.min(255, (num >> 16) + amount);
         let g = Math.min(255, ((num >> 8) & 0x00FF) + amount);
@@ -104,34 +98,20 @@ document.addEventListener('DOMContentLoaded', () => {
         return `#${(b | (g << 8) | (r << 16)).toString(16).padStart(6, '0')}`;
     }
 
-    /**
-     * Draws a single crisp cell with a border and conditional corner highlights.
-     */
     function drawCrispCell(context, x, y, size, mainColor, level) {
         const borderColor = darkenColor(mainColor, 20);
-        
-        // --- CHANGE START: Conditional highlight color logic ---
         let highlightColor;
         if (level === 0) {
-            // For level 0, lighten its own color.
             highlightColor = lightenColor(mainColor, 30);
         } else {
-            // For all other levels, use the highlight color derived from the Level 1 color.
             const level1Color = state.palette[1];
             highlightColor = lightenColor(level1Color, 30);
         }
-        // --- CHANGE END ---
-
-        // 1. Fill the main body
         context.fillStyle = mainColor;
         context.fillRect(x, y, size, size);
-
-        // 2. Draw the crisp, inset border
         context.strokeStyle = borderColor;
         context.lineWidth = 1;
         context.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);
-
-        // 3. Draw the corner highlights
         context.fillStyle = highlightColor;
         context.fillRect(x, y, 1, 1);
         context.fillRect(x + size - 1, y, 1, 1);
@@ -146,14 +126,12 @@ document.addEventListener('DOMContentLoaded', () => {
         const startDate = new Date();
         startDate.setDate(endDate.getDate() - (COLS * ROWS - 1));
         startDate.setDate(startDate.getDate() - startDate.getDay());
-
         let currentDate = new Date(startDate);
         for (let i = 0; i < COLS * ROWS; i++) {
             const dayOfWeek = currentDate.getDay();
             const weekIndex = Math.floor((currentDate - startDate) / (1000 * 60 * 60 * 24 * 7));
-            
             if (weekIndex < COLS) {
-                 state.cells[weekIndex][dayOfWeek] = {
+                state.cells[weekIndex][dayOfWeek] = {
                     dateISO: currentDate.toISOString().split('T')[0],
                     count: 0,
                     level: 0,
@@ -161,7 +139,6 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             currentDate.setDate(currentDate.getDate() + 1);
         }
-
         recalculateAllLevels();
         updateTotalContributions();
     }
@@ -192,9 +169,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const saveState = debounce(() => {
         try {
             localStorage.setItem('heatmapEditorState', JSON.stringify(state));
-        } catch (e) {
-            console.error("Failed to save state:", e);
-        }
+        } catch (e) { console.error("Failed to save state:", e); }
     }, 500);
 
     function loadState() {
@@ -233,16 +208,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function undo() {
         if (undoStack.length === 0) return;
         const prevState = JSON.parse(undoStack.pop());
-        redoStack.push(JSON.stringify({ 
-            cells: state.cells, 
-            currentFrameIndex: state.currentFrameIndex,
-            frames: state.frames 
-        }));
-        
+        redoStack.push(JSON.stringify({ cells: state.cells, currentFrameIndex: state.currentFrameIndex, frames: state.frames }));
         state.cells = prevState.cells;
         state.frames = prevState.frames;
         state.currentFrameIndex = prevState.currentFrameIndex;
-        
         syncFrameAndCells(true);
         updateUIFromState();
         render();
@@ -252,16 +221,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function redo() {
         if (redoStack.length === 0) return;
         const nextState = JSON.parse(redoStack.pop());
-        undoStack.push(JSON.stringify({ 
-            cells: state.cells,
-            currentFrameIndex: state.currentFrameIndex,
-            frames: state.frames 
-        }));
-
+        undoStack.push(JSON.stringify({ cells: state.cells, currentFrameIndex: state.currentFrameIndex, frames: state.frames }));
         state.cells = nextState.cells;
         state.frames = nextState.frames;
         state.currentFrameIndex = nextState.currentFrameIndex;
-
         syncFrameAndCells(true);
         updateUIFromState();
         render();
@@ -272,20 +235,16 @@ document.addEventListener('DOMContentLoaded', () => {
     let cellSize, gap;
     function resizeCanvas() {
         const dpr = window.devicePixelRatio || 1;
-        
         cellSize = 10;
         gap = 4;
-        
         const w = (cellSize + gap) * COLS - gap;
         const h = (cellSize + gap) * ROWS - gap;
-        
         canvas.width = w * dpr;
         canvas.height = h * dpr;
         canvas.style.width = `${w}px`;
         canvas.style.height = `${h}px`;
         ctx.scale(dpr, dpr);
-        ctx.imageSmoothingEnabled = false; // Re-apply after scaling
-        
+        ctx.imageSmoothingEnabled = false;
         render();
         renderMonthLabels();
     }
@@ -293,23 +252,19 @@ document.addEventListener('DOMContentLoaded', () => {
     function render() {
         if (typeof cellSize === 'undefined') return;
         ctx.clearRect(0, 0, canvas.width, canvas.height);
-        
         if (state.imageLegend.img) {
             ctx.globalAlpha = state.imageLegend.opacity;
             ctx.drawImage(state.imageLegend.img, 0, 0, (cellSize+gap)*COLS, (cellSize+gap)*ROWS);
             ctx.globalAlpha = 1.0;
         }
-
         if (state.animation.onionSkin && state.animation.playing && state.currentFrameIndex > 0) {
             const prevFrame = state.frames[state.currentFrameIndex - 1];
             if (prevFrame) {
                 drawGrid(prevFrame.cells, 0.3);
             }
         }
-        
         drawGrid(state.cells);
         if (selection.active) drawSelection();
-
         if (state.game.active) {
             renderGame();
         }
@@ -321,11 +276,9 @@ document.addEventListener('DOMContentLoaded', () => {
             for (let r = 0; r < ROWS; r++) {
                 const cell = cells[c][r];
                 if (!cell) continue;
-
                 const x = c * (cellSize + gap);
                 const y = r * (cellSize + gap);
                 const mainColor = state.palette[cell.level] || state.palette[0];
-                
                 drawCrispCell(ctx, x, y, cellSize, mainColor, cell.level);
             }
         }
@@ -375,22 +328,15 @@ document.addEventListener('DOMContentLoaded', () => {
         isDrawing = true;
         const pos = getCellFromCoords(e);
         if (!pos) return;
-
         pushUndoState();
-        
         switch (state.currentTool) {
-            case 'pencil':
-            case 'eraser':
-                applyBrush(pos.c, pos.r);
-                break;
+            case 'pencil': case 'eraser': applyBrush(pos.c, pos.r); break;
             case 'rect':
                 selection.active = true;
                 selection.x1 = selection.x2 = pos.c;
                 selection.y1 = selection.y2 = pos.r;
                 break;
-            case 'picker':
-                pickColor(pos.c, pos.r);
-                break;
+            case 'picker': pickColor(pos.c, pos.r); break;
         }
         render();
     }
@@ -399,12 +345,8 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!isDrawing || state.game.active) return;
         const pos = getCellFromCoords(e);
         if (!pos) return;
-
         switch (state.currentTool) {
-            case 'pencil':
-            case 'eraser':
-                applyBrush(pos.c, pos.r);
-                break;
+            case 'pencil': case 'eraser': applyBrush(pos.c, pos.r); break;
             case 'rect':
                 selection.x2 = pos.c;
                 selection.y2 = pos.r;
@@ -416,12 +358,10 @@ document.addEventListener('DOMContentLoaded', () => {
     function handlePointerUp(e) {
         if (!isDrawing || state.game.active) return;
         isDrawing = false;
-        
         if (state.currentTool === 'rect' && selection.active) {
             applyRectFill();
         }
         selection.active = false;
-        
         syncFrameAndCells();
         updateTotalContributions();
         updateFramesUI();
@@ -432,7 +372,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function applyBrush(c, r) {
         const cell = state.cells[c]?.[r];
         if (!cell) return;
-        
         if (state.currentTool === 'eraser') {
             cell.count = 0;
         } else if (state.brush.mode === 'level') {
@@ -445,11 +384,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function applyRectFill() {
-        const c1 = Math.min(selection.x1, selection.x2);
-        const c2 = Math.max(selection.x1, selection.x2);
-        const r1 = Math.min(selection.y1, selection.y2);
-        const r2 = Math.max(selection.y1, selection.y2);
-
+        const c1 = Math.min(selection.x1, selection.x2), c2 = Math.max(selection.x1, selection.x2);
+        const r1 = Math.min(selection.y1, selection.y2), r2 = Math.max(selection.y1, selection.y2);
         for (let c = c1; c <= c2; c++) {
             for (let r = r1; r <= r2; r++) {
                 applyBrush(c, r);
@@ -467,16 +403,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function drawSelection() {
-        const c1 = Math.min(selection.x1, selection.x2);
-        const c2 = Math.max(selection.x1, selection.x2);
-        const r1 = Math.min(selection.y1, selection.y2);
-        const r2 = Math.max(selection.y1, selection.y2);
-        
-        const x = c1 * (cellSize + gap);
-        const y = r1 * (cellSize + gap);
-        const w = (c2 - c1 + 1) * (cellSize + gap) - gap;
-        const h = (r2 - r1 + 1) * (cellSize + gap) - gap;
-        
+        const c1 = Math.min(selection.x1, selection.x2), c2 = Math.max(selection.x1, selection.x2);
+        const r1 = Math.min(selection.y1, selection.y2), r2 = Math.max(selection.y1, selection.y2);
+        const x = c1 * (cellSize + gap), y = r1 * (cellSize + gap);
+        const w = (c2 - c1 + 1) * (cellSize + gap) - gap, h = (r2 - r1 + 1) * (cellSize + gap) - gap;
         ctx.strokeStyle = getComputedStyle(document.body).getPropertyValue('--accent-color');
         ctx.lineWidth = 2;
         ctx.strokeRect(x - 1, y - 1, w + 2, h + 2);
@@ -487,7 +417,6 @@ document.addEventListener('DOMContentLoaded', () => {
         window.addEventListener('resize', debounce(resizeCanvas, 200));
         themeToggle.addEventListener('click', toggleTheme);
         gameModeToggle.addEventListener('click', () => toggleGameMode());
-        
         canvas.addEventListener('pointerdown', handlePointerDown);
         canvas.addEventListener('pointermove', handlePointerMove);
         canvas.addEventListener('pointerup', handlePointerUp);
@@ -500,7 +429,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateToolUI();
             }
         });
-
         $$('input[name="brush-mode"]').forEach(radio => radio.addEventListener('change', e => {
             state.brush.mode = e.target.value;
             saveState();
@@ -517,7 +445,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 saveState();
             }
         });
-        
         $('#palette-preset').addEventListener('change', e => {
             state.palette = [...PRESETS[e.target.value]];
             updatePaletteUI();
@@ -548,35 +475,36 @@ document.addEventListener('DOMContentLoaded', () => {
                 render();
             }
         });
-
         $('#import-json').addEventListener('click', () => openFilePicker('.json'));
         $('#export-json').addEventListener('click', exportJSON);
         $('#import-csv').addEventListener('click', () => openFilePicker('.csv'));
         $('#export-csv').addEventListener('click', exportCSV);
         $('#file-input').addEventListener('change', handleFileLoad);
-        
         $('#load-image-legend').addEventListener('click', () => openFilePicker('image/*'));
         $('#image-opacity').addEventListener('input', e => { state.imageLegend.opacity = parseFloat(e.target.value); render(); });
         $('#image-threshold').addEventListener('input', e => { state.imageLegend.threshold = parseInt(e.target.value); });
         $('#apply-image-legend').addEventListener('click', applyImageToFrame);
         $('#clear-image-legend').addEventListener('click', clearImageLegend);
-
         $('#anim-fps').addEventListener('input', e => state.animation.fps = parseInt(e.target.value));
         $('#anim-play').addEventListener('click', toggleAnimation);
         $('#anim-onion-skin').addEventListener('change', e => state.animation.onionSkin = e.target.checked);
         $('#frame-new').addEventListener('click', newFrame);
         $('#frame-duplicate').addEventListener('click', duplicateFrame);
         $('#frame-delete').addEventListener('click', deleteFrame);
-        
+
+        // --- NEW: Frame shifting event listeners ---
+        $('#frame-move-up').addEventListener('click', () => shiftFrame(0, -1));
+        $('#frame-move-down').addEventListener('click', () => shiftFrame(0, 1));
+        $('#frame-move-left').addEventListener('click', () => shiftFrame(-1, 0));
+        $('#frame-move-right').addEventListener('click', () => shiftFrame(1, 0));
+
         $('#export-frame-png').addEventListener('click', () => exportFrame('image/png'));
         $('#export-frame-webp').addEventListener('click', () => exportFrame('image/webp'));
         $('#export-anim').addEventListener('click', exportAnimation);
-
         $('#game-difficulty').addEventListener('input', e => state.game.difficulty = parseInt(e.target.value));
         $('#game-pause').addEventListener('click', () => { state.game.paused = !state.game.paused; });
         $('#game-reset').addEventListener('click', initGame);
         $('#game-write-heatmap').addEventListener('change', e => state.game.writeToHeatmap = e.target.checked);
-
         document.addEventListener('keydown', handleKeyDown);
     }
     
@@ -620,10 +548,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function debounce(func, wait) {
         let timeout;
         return function executedFunction(...args) {
-            const later = () => {
-                clearTimeout(timeout);
-                func(...args);
-            };
+            const later = () => { clearTimeout(timeout); func(...args); };
             clearTimeout(timeout);
             timeout = setTimeout(later, wait);
         };
@@ -631,7 +556,6 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function handleKeyDown(e) {
         if (document.activeElement.tagName === 'INPUT') return;
-
         const keyMap = {
             'p': () => state.currentTool = 'pencil', 'r': () => state.currentTool = 'rect',
             'e': () => state.currentTool = 'eraser', 'i': () => state.currentTool = 'picker',
@@ -645,18 +569,11 @@ document.addEventListener('DOMContentLoaded', () => {
             'g': () => { state.showGrid = !state.showGrid; render(); },
             't': () => toggleGameMode(),
         };
-
-        if (keyMap[e.key]) {
-            e.preventDefault();
-            keyMap[e.key]();
-            updateUIFromState();
-        }
-
+        if (keyMap[e.key]) { e.preventDefault(); keyMap[e.key](); updateUIFromState(); }
         if (e.ctrlKey || e.metaKey) {
             if (e.key === 'z') { e.preventDefault(); undo(); }
             if (e.key === 'y') { e.preventDefault(); redo(); }
         }
-
         if (state.game.active && !state.game.paused) {
             if (['w', 'ArrowUp', 'a', 'ArrowLeft', 's', 'ArrowDown', 'd', 'ArrowRight', ' '].includes(e.key)) {
                 e.preventDefault();
@@ -690,21 +607,14 @@ document.addEventListener('DOMContentLoaded', () => {
         reader.onload = (event) => {
             const content = event.target.result;
             pushUndoState();
-            if (file.type.startsWith('image/')) {
-                loadImageLegend(content);
-            } else if (file.name.endsWith('.json')) {
-                importJSON(content);
-            } else if (file.name.endsWith('.csv')) {
-                importCSV(content);
-            }
+            if (file.type.startsWith('image/')) { loadImageLegend(content); } 
+            else if (file.name.endsWith('.json')) { importJSON(content); } 
+            else if (file.name.endsWith('.csv')) { importCSV(content); }
             e.target.value = '';
             saveState();
         };
-        if(file.type.startsWith('image/')) {
-            reader.readAsDataURL(file);
-        } else {
-            reader.readAsText(file);
-        }
+        if(file.type.startsWith('image/')) { reader.readAsDataURL(file); } 
+        else { reader.readAsText(file); }
     }
 
     function importJSON(content) {
@@ -714,10 +624,7 @@ document.addEventListener('DOMContentLoaded', () => {
             syncFrameAndCells(true);
             updateUIFromState();
             render();
-        } catch (err) {
-            alert('Error parsing JSON file.');
-            console.error(err);
-        }
+        } catch (err) { alert('Error parsing JSON file.'); console.error(err); }
     }
     function exportJSON() {
         const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state));
@@ -749,34 +656,88 @@ document.addEventListener('DOMContentLoaded', () => {
     function exportCSV() {
         let csvContent = "date,count\n";
         state.cells.flat().filter(Boolean).forEach(cell => {
-            if (cell.count > 0) {
-                csvContent += `${cell.dateISO},${cell.count}\n`;
-            }
+            if (cell.count > 0) { csvContent += `${cell.dateISO},${cell.count}\n`; }
         });
         const dataStr = "data:text/csv;charset=utf-8," + encodeURIComponent(csvContent);
         downloadFile(dataStr, "heatmap.csv");
     }
 
-    function exportFrame(format = 'image/png') {
-        const tempCanvas = document.createElement('canvas');
-        tempCanvas.width = canvas.width;
-        tempCanvas.height = canvas.height;
-        const tempCtx = tempCanvas.getContext('2d');
-        tempCtx.imageSmoothingEnabled = false; // For crisp export
-        tempCtx.scale(window.devicePixelRatio, window.devicePixelRatio);
+    // --- NEW: Helper function to draw a frame with labels for export ---
+    function drawFrameWithLabels(tempCtx, cells) {
+        const dpr = window.devicePixelRatio || 1;
+        const PADDING = 30;
+        const gridW = (cellSize + gap) * COLS - gap;
+        const gridH = (cellSize + gap) * ROWS - gap;
+        tempCtx.canvas.width = (gridW + PADDING) * dpr;
+        tempCtx.canvas.height = (gridH + PADDING) * dpr;
+        tempCtx.scale(dpr, dpr);
+        tempCtx.imageSmoothingEnabled = false;
+
         tempCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg-color');
-        tempCtx.fillRect(0,0, tempCanvas.width, tempCanvas.height);
+        tempCtx.fillRect(0, 0, tempCtx.canvas.width, tempCtx.canvas.height);
+
+        tempCtx.font = '10px ' + getComputedStyle(document.body).getPropertyValue('--font-family');
+        tempCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--muted-color');
+        tempCtx.textAlign = 'left';
+        tempCtx.textBaseline = 'middle';
+        const dayLabels = ["", "M", "", "W", "", "F", ""];
+        dayLabels.forEach((label, i) => {
+            const y = PADDING + i * (cellSize + gap) + cellSize / 2;
+            tempCtx.fillText(label, 0, y);
+        });
+        
+        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+        let lastMonth = -1;
+        for (let c = 0; c < COLS; c++) {
+            const cell = cells[c]?.find(cell => cell);
+            if (!cell) continue;
+            const date = new Date(cell.dateISO + 'T00:00:00');
+            const month = date.getUTCMonth();
+            if (month !== lastMonth && date.getUTCDate() < 8) {
+                tempCtx.fillText(months[month], PADDING + c * (cellSize + gap), 15);
+                lastMonth = month;
+            }
+        }
+        
         for (let c = 0; c < COLS; c++) {
             for (let r = 0; r < ROWS; r++) {
-                const cell = state.cells[c][r];
+                const cell = cells[c][r];
                 if (!cell) continue;
-                const x = c * (cellSize + gap);
-                const y = r * (cellSize + gap);
+                const x = PADDING + c * (cellSize + gap);
+                const y = PADDING + r * (cellSize + gap);
                 const mainColor = state.palette[cell.level];
-                
                 drawCrispCell(tempCtx, x, y, cellSize, mainColor, cell.level);
             }
         }
+    }
+
+    function exportFrame(format = 'image/png') {
+        const tempCanvas = document.createElement('canvas');
+        const tempCtx = tempCanvas.getContext('2d');
+        const includeLabels = $('#export-include-labels').checked;
+
+        if (includeLabels) {
+            drawFrameWithLabels(tempCtx, state.cells);
+        } else {
+            const dpr = window.devicePixelRatio || 1;
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+            tempCtx.scale(dpr, dpr);
+            tempCtx.imageSmoothingEnabled = false;
+            tempCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg-color');
+            tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+            for (let c = 0; c < COLS; c++) {
+                for (let r = 0; r < ROWS; r++) {
+                    const cell = state.cells[c][r];
+                    if (!cell) continue;
+                    const x = c * (cellSize + gap);
+                    const y = r * (cellSize + gap);
+                    const mainColor = state.palette[cell.level];
+                    drawCrispCell(tempCtx, x, y, cellSize, mainColor, cell.level);
+                }
+            }
+        }
+
         const dataURL = tempCanvas.toDataURL(format);
         const ext = format.split('/')[1];
         downloadFile(dataURL, `frame-${state.currentFrameIndex}.${ext}`);
@@ -785,6 +746,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function exportAnimation() {
         if (state.frames.length === 0) return;
         $('#export-anim-warning').classList.remove('hidden');
+        const includeLabels = $('#export-include-labels').checked;
         let frameIndex = 0;
         const downloadNextFrame = () => {
             if (frameIndex >= state.frames.length) {
@@ -793,23 +755,30 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             const frame = state.frames[frameIndex];
             const tempCanvas = document.createElement('canvas');
-            tempCanvas.width = (cellSize + gap) * COLS - gap;
-            tempCanvas.height = (cellSize + gap) * ROWS - gap;
             const tempCtx = tempCanvas.getContext('2d');
-            tempCtx.imageSmoothingEnabled = false; // For crisp export
-            tempCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg-color');
-            tempCtx.fillRect(0,0, tempCanvas.width, tempCanvas.height);
-            for (let c = 0; c < COLS; c++) {
-                for (let r = 0; r < ROWS; r++) {
-                    const cell = frame.cells[c][r];
-                    if (!cell) continue;
-                    const x = c * (cellSize + gap);
-                    const y = r * (cellSize + gap);
-                    const mainColor = state.palette[cell.level];
 
-                    drawCrispCell(tempCtx, x, y, cellSize, mainColor, cell.level);
+            if (includeLabels) {
+                drawFrameWithLabels(tempCtx, frame.cells);
+            } else {
+                 const dpr = window.devicePixelRatio || 1;
+                tempCanvas.width = (cellSize + gap) * COLS - gap * dpr;
+                tempCanvas.height = (cellSize + gap) * ROWS - gap * dpr;
+                tempCtx.scale(dpr, dpr);
+                tempCtx.imageSmoothingEnabled = false;
+                tempCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg-color');
+                tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+                for (let c = 0; c < COLS; c++) {
+                    for (let r = 0; r < ROWS; r++) {
+                        const cell = frame.cells[c][r];
+                        if (!cell) continue;
+                        const x = c * (cellSize + gap);
+                        const y = r * (cellSize + gap);
+                        const mainColor = state.palette[cell.level];
+                        drawCrispCell(tempCtx, x, y, cellSize, mainColor, cell.level);
+                    }
                 }
             }
+
             const dataURL = tempCanvas.toDataURL('image/png');
             downloadFile(dataURL, `anim-frame-${String(frameIndex).padStart(3, '0')}.png`);
             frameIndex++;
@@ -847,8 +816,7 @@ document.addEventListener('DOMContentLoaded', () => {
         pushUndoState();
         const tempCanvas = document.createElement('canvas');
         const tempCtx = tempCanvas.getContext('2d');
-        tempCanvas.width = COLS;
-        tempCanvas.height = ROWS;
+        tempCanvas.width = COLS; tempCanvas.height = ROWS;
         tempCtx.drawImage(state.imageLegend.img, 0, 0, COLS, ROWS);
         const imageData = tempCtx.getImageData(0, 0, COLS, ROWS);
         for (let c = 0; c < COLS; c++) {
@@ -954,6 +922,51 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // --- NEW: Function to shift cell data in the current frame ---
+    function shiftFrame(dx, dy) {
+        pushUndoState();
+        const currentFrame = state.frames[state.currentFrameIndex];
+        const originalCells = JSON.parse(JSON.stringify(currentFrame.cells));
+        
+        // Create a new blank grid to prevent overwriting issues
+        const newCells = Array.from({ length: COLS }, () => new Array(ROWS).fill(null));
+        const endDate = new Date();
+        const startDate = new Date();
+        startDate.setDate(endDate.getDate() - (COLS * ROWS - 1));
+        startDate.setDate(startDate.getDate() - startDate.getDay());
+        let tempDate = new Date(startDate);
+        for (let c = 0; c < COLS; c++) {
+            for(let r = 0; r < ROWS; r++) {
+                const date = new Date(tempDate);
+                date.setDate(tempDate.getDate() + (c * 7 + r));
+                 newCells[c][r] = {
+                    dateISO: date.toISOString().split('T')[0],
+                    count: 0,
+                    level: 0,
+                };
+            }
+        }
+
+        for (let c = 0; c < COLS; c++) {
+            for (let r = 0; r < ROWS; r++) {
+                const newC = c + dx;
+                const newR = r + dy;
+
+                if (newC >= 0 && newC < COLS && newR >= 0 && newR < ROWS) {
+                    // Copy original cell data to the new position
+                    newCells[newC][newR].count = originalCells[c][r].count;
+                    newCells[newC][newR].level = originalCells[c][r].level;
+                }
+            }
+        }
+
+        currentFrame.cells = newCells;
+        syncFrameAndCells(true);
+        updateFramesUI();
+        render();
+        saveState();
+    }
+
     function newFrame() {
         pushUndoState();
         generateGridData();
@@ -1011,9 +1024,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 selectFrame(nextIndex);
             }
         }
-        if (state.game.active && !state.game.paused) {
-            updateGame(deltaTime);
-        }
+        if (state.game.active && !state.game.paused) { updateGame(deltaTime); }
         render();
         requestAnimationFrame(mainLoop);
     }
