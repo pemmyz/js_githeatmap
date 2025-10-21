@@ -28,7 +28,7 @@ body.dark-mode {
     --button-border: #30363d;
     --accent-color: #58a6ff;
     --focus-ring-color: #58a6ff80;
-    --level-0-bg: #161b22;
+    --level-0-bg: #161b22; /* Official GitHub dark mode empty cell color */
     --level-1-bg: #0e4429;
     --level-2-bg: #006d32;
     --level-3-bg: #26a641;
@@ -171,7 +171,12 @@ label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.875rem
 .level-btn[data-level="3"] { background-color: var(--level-3-bg); }
 .level-btn[data-level="4"] { background-color: var(--level-4-bg); }
 
-.palette-editor, .thresholds, .io-buttons, .export-buttons, .frame-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.palette-editor, .thresholds, .io-buttons, .export-buttons, .frame-actions, .image-legend-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+
+.image-legend-actions {
+    flex-direction: column;
+    align-items: stretch;
+}
 
 /* --- Timeline --- */
 #frames-list {
@@ -204,6 +209,13 @@ label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.875rem
 .timeline-controls { display: flex; align-items: center; gap: 12px; }
 .timeline-controls #anim-play { width: 36px; height: 36px; padding: 6px; }
 .timeline-controls #anim-play svg { width: 100%; height: 100%; fill: currentColor; }
+#anim-fps-display {
+    font-size: 0.875rem;
+    color: var(--muted-color);
+    width: 2em; /* Gives space for two digits */
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
 
 .frame-move-controls {
     display: flex;

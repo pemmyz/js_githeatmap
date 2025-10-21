@@ -4,6 +4,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const ROWS = 7;
     const PRESETS = {
         classic: ['#ebedf0', '#9be9a8', '#40c463', '#30a14e', '#216e39'],
+        dark: ['#161b22', '#0e4429', '#006d32', '#26a641', '#39d353'],
         arc: ['#00000000', '#004400', '#008800', '#00bb00', '#00ff00'],
     };
 
@@ -99,19 +100,38 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function drawCrispCell(context, x, y, size, mainColor, level) {
-        const borderColor = darkenColor(mainColor, 20);
-        let highlightColor;
-        if (level === 0) {
-            highlightColor = lightenColor(mainColor, 30);
+        const isDarkMode = document.body.classList.contains('dark-mode');
+        let borderColor;
+        let highlightColor; // This is the color for the corners
+
+        if (isDarkMode) {
+            // --- DARK MODE LOGIC ---
+            // The border is a slightly darker version of the cell's own color to give it definition.
+            // For level 0, the border is the same color as the fill, making it "borderless".
+            borderColor = level === 0 ? mainColor : darkenColor(mainColor, 20);
+            // The corners are always the page background color to create the "chipped" look.
+            highlightColor = getComputedStyle(document.body).getPropertyValue('--bg-color');
         } else {
-            const level1Color = state.palette[1];
-            highlightColor = lightenColor(level1Color, 30);
+            // --- LIGHT MODE LOGIC (Unchanged) ---
+            borderColor = darkenColor(mainColor, 20);
+            if (level === 0) {
+                highlightColor = lightenColor(mainColor, 30);
+            } else {
+                const level1Color = state.palette[1];
+                highlightColor = lightenColor(level1Color, 30);
+            }
         }
+
+        // 1. Fill the entire cell with its main color.
         context.fillStyle = mainColor;
         context.fillRect(x, y, size, size);
+
+        // 2. Draw the 1px border around the cell.
         context.strokeStyle = borderColor;
         context.lineWidth = 1;
         context.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);
+        
+        // 3. "Chip away" the corners by drawing 1x1 pixels with the highlight color on top.
         context.fillStyle = highlightColor;
         context.fillRect(x, y, 1, 1);
         context.fillRect(x + size - 1, y, 1, 1);
@@ -477,11 +497,16 @@ document.addEventListener('DOMContentLoaded', () => {
         $('#export-csv').addEventListener('click', exportCSV);
         $('#file-input').addEventListener('change', handleFileLoad);
         $('#load-image-legend').addEventListener('click', () => openFilePicker('image/*'));
+        $('#reset-all-settings').addEventListener('click', resetAllSettings);
         $('#image-opacity').addEventListener('input', e => { state.imageLegend.opacity = parseFloat(e.target.value); render(); });
         $('#image-threshold').addEventListener('input', e => { state.imageLegend.threshold = parseInt(e.target.value); });
         $('#apply-image-legend').addEventListener('click', applyImageToFrame);
         $('#clear-image-legend').addEventListener('click', clearImageLegend);
-        $('#anim-fps').addEventListener('input', e => state.animation.fps = parseInt(e.target.value));
+        $('#anim-fps').addEventListener('input', e => {
+            const fps = parseInt(e.target.value);
+            state.animation.fps = fps;
+            $('#anim-fps-display').textContent = fps;
+        });
         $('#anim-play').addEventListener('click', toggleAnimation);
         $('#anim-onion-skin').addEventListener('change', e => state.animation.onionSkin = e.target.checked);
         $('#frame-new').addEventListener('click', newFrame);
@@ -506,6 +531,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function updateUIFromState() {
         updateToolUI(); updateBrushUI(); updatePaletteUI(); updateThresholdsUI(); updateFramesUI(); updateTotalContributions();
         $('#anim-fps').value = state.animation.fps;
+        $('#anim-fps-display').textContent = state.animation.fps;
         $('#anim-onion-skin').checked = state.animation.onionSkin;
     }
     function updateToolUI() { $$('.tool-btn').forEach(b => b.setAttribute('aria-pressed', b.dataset.tool === state.currentTool)); }
@@ -561,6 +587,16 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.classList.toggle('dark-mode', theme === 'dark');
         themeToggle.textContent = theme === 'dark' ? '☀️' : '🌙';
         localStorage.setItem('theme', theme);
+
+        if (theme === 'dark') {
+            state.palette = [...PRESETS.dark];
+            $('#palette-preset').value = 'dark';
+        } else { // theme is 'light'
+            state.palette = [...PRESETS.classic];
+            $('#palette-preset').value = 'classic';
+        }
+        
+        updatePaletteUI();
         render();
     }
     function toggleTheme() {
@@ -568,6 +604,15 @@ document.addEventListener('DOMContentLoaded', () => {
         applyTheme(newTheme);
     }
     
+    function resetAllSettings() {
+        if (confirm("Are you sure you want to reset all settings to their default values? This will clear your current project and cannot be undone.")) {
+            // Remove the saved state from local storage
+            localStorage.removeItem('heatmapEditorState');
+            // Force a page reload to start fresh
+            location.reload();
+        }
+    }
+
     function openFilePicker(type) {
         const fileInput = $('#file-input');
         fileInput.accept = type;
@@ -960,7 +1005,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    // --- START: MODIFIED FUNCTION ---
     function shiftFrame(dx, dy) {
         pushUndoState();
         const wrap = $('#frame-shift-wrap').checked;
@@ -1008,7 +1052,6 @@ document.addEventListener('DOMContentLoaded', () => {
         render();              // Redraw the main canvas
         saveState();
     }
-    // --- END: MODIFIED FUNCTION ---
 
     function newFrame() {
         pushUndoState();
