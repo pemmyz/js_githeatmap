@@ -60,6 +60,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- INITIALIZATION ---
     function init() {
+        // Disable anti-aliasing for a crisp pixel look
+        ctx.imageSmoothingEnabled = false;
+
         loadState();
         if (state.cells.length === 0) {
             generateGridData();
@@ -72,6 +75,68 @@ document.addEventListener('DOMContentLoaded', () => {
         applyTheme(localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
         
         requestAnimationFrame(mainLoop);
+    }
+
+    // --- HELPER FUNCTIONS ---
+    function darkenColor(hex, amount) {
+        if (!hex || hex === 'transparent' || hex.length < 4) return '#00000000';
+        let color = hex.startsWith('#') ? hex.slice(1) : hex;
+        if (color.length === 3) color = color.split('').map(char => char + char).join('');
+        if (color.length === 8) color = color.slice(0, 6);
+
+        const num = parseInt(color, 16);
+        let r = Math.max(0, (num >> 16) - amount);
+        let g = Math.max(0, ((num >> 8) & 0x00FF) - amount);
+        let b = Math.max(0, (num & 0x0000FF) - amount);
+        return `#${(b | (g << 8) | (r << 16)).toString(16).padStart(6, '0')}`;
+    }
+
+    function lightenColor(hex, amount) {
+        if (!hex || hex === 'transparent' || hex.length < 4) return '#00000000';
+        let color = hex.startsWith('#') ? hex.slice(1) : hex;
+        if (color.length === 3) color = color.split('').map(char => char + char).join('');
+        if (color.length === 8) color = color.slice(0, 6);
+
+        const num = parseInt(color, 16);
+        let r = Math.min(255, (num >> 16) + amount);
+        let g = Math.min(255, ((num >> 8) & 0x00FF) + amount);
+        let b = Math.min(255, (num & 0x0000FF) + amount);
+        return `#${(b | (g << 8) | (r << 16)).toString(16).padStart(6, '0')}`;
+    }
+
+    /**
+     * Draws a single crisp cell with a border and conditional corner highlights.
+     */
+    function drawCrispCell(context, x, y, size, mainColor, level) {
+        const borderColor = darkenColor(mainColor, 20);
+        
+        // --- CHANGE START: Conditional highlight color logic ---
+        let highlightColor;
+        if (level === 0) {
+            // For level 0, lighten its own color.
+            highlightColor = lightenColor(mainColor, 30);
+        } else {
+            // For all other levels, use the highlight color derived from the Level 1 color.
+            const level1Color = state.palette[1];
+            highlightColor = lightenColor(level1Color, 30);
+        }
+        // --- CHANGE END ---
+
+        // 1. Fill the main body
+        context.fillStyle = mainColor;
+        context.fillRect(x, y, size, size);
+
+        // 2. Draw the crisp, inset border
+        context.strokeStyle = borderColor;
+        context.lineWidth = 1;
+        context.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);
+
+        // 3. Draw the corner highlights
+        context.fillStyle = highlightColor;
+        context.fillRect(x, y, 1, 1);
+        context.fillRect(x + size - 1, y, 1, 1);
+        context.fillRect(x, y + size - 1, 1, 1);
+        context.fillRect(x + size - 1, y + size - 1, 1, 1);
     }
 
     // --- DATA & GRID LOGIC ---
@@ -208,9 +273,8 @@ document.addEventListener('DOMContentLoaded', () => {
     function resizeCanvas() {
         const dpr = window.devicePixelRatio || 1;
         
-        // ** CHANGE: Adjust size and gap for better aesthetics **
-        cellSize = 14;
-        gap = 2;
+        cellSize = 10;
+        gap = 4;
         
         const w = (cellSize + gap) * COLS - gap;
         const h = (cellSize + gap) * ROWS - gap;
@@ -220,6 +284,7 @@ document.addEventListener('DOMContentLoaded', () => {
         canvas.style.width = `${w}px`;
         canvas.style.height = `${h}px`;
         ctx.scale(dpr, dpr);
+        ctx.imageSmoothingEnabled = false; // Re-apply after scaling
         
         render();
         renderMonthLabels();
@@ -259,18 +324,9 @@ document.addEventListener('DOMContentLoaded', () => {
 
                 const x = c * (cellSize + gap);
                 const y = r * (cellSize + gap);
+                const mainColor = state.palette[cell.level] || state.palette[0];
                 
-                ctx.fillStyle = state.palette[cell.level] || state.palette[0];
-                
-                // ** CHANGE: Use roundRect for rounded corners **
-                ctx.beginPath();
-                ctx.roundRect(x, y, cellSize, cellSize, 3); // 3px corner radius
-                ctx.fill();
-
-                if (state.showGrid) {
-                    ctx.strokeStyle = 'rgba(0,0,0,0.1)';
-                    ctx.stroke(); // Stroke the same rounded rectangle path
-                }
+                drawCrispCell(ctx, x, y, cellSize, mainColor, cell.level);
             }
         }
         ctx.globalAlpha = 1.0;
@@ -706,6 +762,7 @@ document.addEventListener('DOMContentLoaded', () => {
         tempCanvas.width = canvas.width;
         tempCanvas.height = canvas.height;
         const tempCtx = tempCanvas.getContext('2d');
+        tempCtx.imageSmoothingEnabled = false; // For crisp export
         tempCtx.scale(window.devicePixelRatio, window.devicePixelRatio);
         tempCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg-color');
         tempCtx.fillRect(0,0, tempCanvas.width, tempCanvas.height);
@@ -713,12 +770,11 @@ document.addEventListener('DOMContentLoaded', () => {
             for (let r = 0; r < ROWS; r++) {
                 const cell = state.cells[c][r];
                 if (!cell) continue;
-                tempCtx.fillStyle = state.palette[cell.level];
+                const x = c * (cellSize + gap);
+                const y = r * (cellSize + gap);
+                const mainColor = state.palette[cell.level];
                 
-                // ** CHANGE: Use roundRect in export for consistency **
-                tempCtx.beginPath();
-                tempCtx.roundRect(c * (cellSize + gap), r * (cellSize + gap), cellSize, cellSize, 3);
-                tempCtx.fill();
+                drawCrispCell(tempCtx, x, y, cellSize, mainColor, cell.level);
             }
         }
         const dataURL = tempCanvas.toDataURL(format);
@@ -740,18 +796,18 @@ document.addEventListener('DOMContentLoaded', () => {
             tempCanvas.width = (cellSize + gap) * COLS - gap;
             tempCanvas.height = (cellSize + gap) * ROWS - gap;
             const tempCtx = tempCanvas.getContext('2d');
+            tempCtx.imageSmoothingEnabled = false; // For crisp export
             tempCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg-color');
             tempCtx.fillRect(0,0, tempCanvas.width, tempCanvas.height);
             for (let c = 0; c < COLS; c++) {
                 for (let r = 0; r < ROWS; r++) {
                     const cell = frame.cells[c][r];
                     if (!cell) continue;
-                    tempCtx.fillStyle = state.palette[cell.level];
-                    
-                    // ** CHANGE: Use roundRect in export for consistency **
-                    tempCtx.beginPath();
-                    tempCtx.roundRect(c * (cellSize + gap), r * (cellSize + gap), cellSize, cellSize, 3);
-                    tempCtx.fill();
+                    const x = c * (cellSize + gap);
+                    const y = r * (cellSize + gap);
+                    const mainColor = state.palette[cell.level];
+
+                    drawCrispCell(tempCtx, x, y, cellSize, mainColor, cell.level);
                 }
             }
             const dataURL = tempCanvas.toDataURL('image/png');

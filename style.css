@@ -110,11 +110,17 @@ aside {
     top: 30px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    /* --- CHANGE START: Adjust gap to match new canvas gap --- */
+    gap: 4px; 
+    /* --- CHANGE END --- */
     color: var(--muted-color);
     font-size: 0.75rem;
 }
-.heatmap-labels-left span { height: 12px; }
+.heatmap-labels-left span {
+    /* --- CHANGE START: Adjust height to match new cell size --- */
+    height: 10px; 
+    /* --- CHANGE END --- */
+}
 .heatmap-labels-top {
     position: absolute;
     top: 0;
