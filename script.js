@@ -649,7 +649,7 @@ document.addEventListener('DOMContentLoaded', () => {
         tempCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--muted-color');
         tempCtx.textAlign = 'left';
         tempCtx.textBaseline = 'middle';
-        const dayLabels = ["", "M", "", "W", "", "F", ""];
+        const dayLabels = ["", "Mon", "", "Wed", "", "Fri", ""];
         dayLabels.forEach((label, i) => {
             const y = PADDING + i * (cellSize + gap) + cellSize / 2;
             tempCtx.fillText(label, 0, y);
