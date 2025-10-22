@@ -6,7 +6,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const GAP_SIZE = 4;
     const PRESETS = {
         classic: ['#ebedf0', '#9be9a8', '#40c463', '#30a14e', '#216e39'],
-        dark: ['#161b22', '#0e4429', '#006d32', '#26a641', '#39d353'],
+        dark: ['#1C222C', '#0e4429', '#006d32', '#26a641', '#39d353'],
         arc: ['#00000000', '#004400', '#008800', '#00bb00', '#00ff00'],
     };
 
