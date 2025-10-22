@@ -48,6 +48,7 @@ document.addEventListener('DOMContentLoaded', () => {
             fps: 10,
             lastFrameTime: 0,
             onionSkin: false,
+            stableMonths: false,
         },
         imageLegend: {
             img: null,
@@ -207,6 +208,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 const parsed = JSON.parse(savedState);
                 if (parsed.imageLegend) parsed.imageLegend.img = null;
                 state = { ...defaultState, ...parsed };
+                state.animation = { ...defaultState.animation, ...parsed.animation }; // Ensure new flags are added
                 state.frames = state.frames || [];
                 state.currentFrameIndex = Math.min(state.currentFrameIndex, state.frames.length - 1);
                 state.activeLayerIndex = state.activeLayerIndex || 0;
@@ -377,11 +379,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 ctx.globalAlpha = 1.0;
             }
             
-            if (index === state.activeLayerIndex && state.animation.onionSkin && state.animation.playing && state.currentFrameIndex > 0) {
-                const prevFrame = state.frames[state.currentFrameIndex - 1];
-                const prevLayer = prevFrame?.layers[state.activeLayerIndex];
-                if (prevLayer) {
-                    drawGrid(ctx, prevLayer.cells, 0.3);
+            if (index === state.activeLayerIndex && state.animation.onionSkin && state.animation.playing) {
+                let prevFrameIndex = state.currentFrameIndex;
+                let prevLayerIndex = state.activeLayerIndex - 1;
+
+                if (prevLayerIndex < 0) {
+                    prevFrameIndex--;
+                    if (prevFrameIndex >= 0) {
+                        prevLayerIndex = state.frames[prevFrameIndex].layers.length - 1;
+                    }
+                }
+
+                if (prevFrameIndex >= 0) {
+                    const prevLayer = state.frames[prevFrameIndex]?.layers[prevLayerIndex];
+                    if (prevLayer) {
+                         drawGrid(ctx, prevLayer.cells, 0.3);
+                    }
                 }
             }
 
@@ -415,8 +428,18 @@ document.addEventListener('DOMContentLoaded', () => {
     function renderAllMonthLabels() {
         $$('.heatmap-labels-top').forEach((container, index) => {
             container.innerHTML = '';
-            const cells = state.frames[state.currentFrameIndex]?.layers[index]?.cells;
+
+            let cells;
+            if (state.animation.stableMonths) {
+                // Always use the first frame/layer's cells for ALL label containers
+                cells = state.frames[0]?.layers[0]?.cells;
+            } else {
+                // Use the current frame/layer's cells for this specific label container
+                cells = state.frames[state.currentFrameIndex]?.layers[index]?.cells;
+            }
+
             if (!cells || cells.length === 0) return;
+
             const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
             let lastMonth = -1;
             for (let c = 0; c < COLS; c++) {
@@ -435,6 +458,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
+
 
     // --- DRAWING & TOOLS ---
     let isDrawing = false;
@@ -674,6 +698,11 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         $('#anim-play').addEventListener('click', toggleAnimation);
         $('#anim-onion-skin').addEventListener('change', e => state.animation.onionSkin = e.target.checked);
+        $('#anim-stable-months').addEventListener('change', e => {
+            state.animation.stableMonths = e.target.checked;
+            renderAllMonthLabels(); // Re-render labels immediately
+            saveState();
+        });
         $('#frame-new').addEventListener('click', newFrame);
         $('#frame-duplicate').addEventListener('click', duplicateFrame);
         $('#frame-delete').addEventListener('click', deleteFrame);
@@ -698,7 +727,9 @@ document.addEventListener('DOMContentLoaded', () => {
         $('#anim-fps').value = state.animation.fps;
         $('#anim-fps-display').textContent = state.animation.fps;
         $('#anim-onion-skin').checked = state.animation.onionSkin;
+        $('#anim-stable-months').checked = state.animation.stableMonths;
     }
+
     function updateToolUI() { $$('.tool-btn').forEach(b => b.setAttribute('aria-pressed', b.dataset.tool === state.currentTool)); }
     function updateBrushUI() {
         $$('.level-btn').forEach(b => b.style.outline = b.dataset.level == state.brush.level ? `2px solid ${getComputedStyle(document.body).getPropertyValue('--accent-color')}` : 'none');
@@ -932,50 +963,81 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadFile(dataURL, `frame-${state.currentFrameIndex}-layer-${state.activeLayerIndex}.${ext}`);
     }
 
+    // --- MODIFIED with Stable Months logic ---
     function exportAnimation() {
         if (state.frames.length === 0) return;
         const warningEl = $('#export-anim-warning');
         warningEl.textContent = "This will trigger multiple downloads.";
         warningEl.classList.remove('hidden');
         const includeLabels = $('#export-include-labels').checked;
-        
-        let downloadIndex = 0;
+        const firstFrameCells = state.frames[0]?.layers[0]?.cells;
+
         const downloads = [];
         state.frames.forEach((frame, frameIdx) => {
-            frame.layers.forEach((layer, layerIdx) => {
-                downloads.push({frame, layer, frameIdx, layerIdx});
-            });
+            const topLayer = frame.layers[0];
+            if (topLayer) {
+                let cellsForExport = topLayer.cells;
+                if (state.animation.stableMonths && includeLabels && firstFrameCells) {
+                    const hybridCells = JSON.parse(JSON.stringify(topLayer.cells));
+                    for (let c = 0; c < COLS; c++) {
+                        for (let r = 0; r < ROWS; r++) {
+                            if (hybridCells[c][r] && firstFrameCells[c][r]) {
+                                hybridCells[c][r].dateISO = firstFrameCells[c][r].dateISO;
+                            }
+                        }
+                    }
+                    cellsForExport = hybridCells;
+                }
+                downloads.push({ cells: cellsForExport, frameIdx });
+            }
         });
-
+        
+        let downloadIndex = 0;
         const downloadNext = () => {
             if (downloadIndex >= downloads.length) {
                 warningEl.classList.add('hidden');
                 return;
             }
-            const { layer, frameIdx, layerIdx } = downloads[downloadIndex];
-            const frameCanvas = createFrameCanvas(layer.cells, includeLabels);
+            const { cells, frameIdx } = downloads[downloadIndex];
+            const frameCanvas = createFrameCanvas(cells, includeLabels);
             const dataURL = frameCanvas.toDataURL('image/png');
-            downloadFile(dataURL, `anim-F${String(frameIdx).padStart(3, '0')}-L${layerIdx}.png`);
+            downloadFile(dataURL, `anim-frame-${String(frameIdx).padStart(3, '0')}.png`);
             downloadIndex++;
             setTimeout(downloadNext, 200);
         };
         downloadNext();
     }
 
+    // --- MODIFIED with Stable Months logic ---
     async function exportAnimationWEBP() {
-        if (state.frames.length <= 1 && state.frames[0].layers.length <= 1) { return alert("Animation requires at least 2 steps (frames or layers)."); }
+        if (state.frames.length < 1) { return alert("Animation requires at least 1 frame."); }
         const warningEl = $('#export-anim-warning');
         const exportButtons = $$('.export-buttons button, #export-anim-webp');
         const includeLabels = $('#export-include-labels').checked;
         const frameDuration = 1000 / state.animation.fps;
         try {
-            warningEl.textContent = `Processing all frames and layers...`;
+            warningEl.textContent = `Processing top layer of ${state.frames.length} frames...`;
             warningEl.classList.remove('hidden');
             exportButtons.forEach(b => b.disabled = true);
             const writer = new WebPWriter();
+            const firstFrameCells = state.frames[0]?.layers[0]?.cells;
+
             for (const frame of state.frames) {
-                for (const layer of frame.layers) {
-                    const frameCanvas = createFrameCanvas(layer.cells, includeLabels);
+                const topLayer = frame.layers[0];
+                if (topLayer && topLayer.cells) {
+                    let cellsForExport = topLayer.cells;
+                    if (state.animation.stableMonths && includeLabels && firstFrameCells) {
+                        const hybridCells = JSON.parse(JSON.stringify(topLayer.cells));
+                        for (let c = 0; c < COLS; c++) {
+                            for (let r = 0; r < ROWS; r++) {
+                                if (hybridCells[c][r] && firstFrameCells[c][r]) {
+                                    hybridCells[c][r].dateISO = firstFrameCells[c][r].dateISO;
+                                }
+                            }
+                        }
+                        cellsForExport = hybridCells;
+                    }
+                    const frameCanvas = createFrameCanvas(cellsForExport, includeLabels);
                     writer.addFrame(frameCanvas.toDataURL('image/webp', {quality: 0.8}), { duration: frameDuration });
                 }
             }
@@ -993,8 +1055,9 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
+    // --- MODIFIED with Stable Months logic ---
     async function exportAnimationGIF() {
-        if (state.frames.length <= 1 && state.frames[0].layers.length <= 1) { return alert("Animation requires at least 2 steps (frames or layers)."); }
+        if (state.frames.length < 1) { return alert("Animation requires at least 1 frame."); }
         const warningEl = $('#export-anim-warning');
         const exportButtons = $$('.export-buttons button, #export-anim-gif');
         const includeLabels = $('#export-include-labels').checked;
@@ -1008,9 +1071,24 @@ document.addEventListener('DOMContentLoaded', () => {
                 const progressPercent = Math.round(p * 100);
                 warningEl.textContent = `Encoding GIF... ${progressPercent}%`;
             });
+            const firstFrameCells = state.frames[0]?.layers[0]?.cells;
+
             for (const frame of state.frames) {
-                for (const layer of frame.layers) {
-                    const frameCanvas = createFrameCanvas(layer.cells, includeLabels);
+                 const topLayer = frame.layers[0];
+                if (topLayer && topLayer.cells) {
+                    let cellsForExport = topLayer.cells;
+                    if (state.animation.stableMonths && includeLabels && firstFrameCells) {
+                        const hybridCells = JSON.parse(JSON.stringify(topLayer.cells));
+                        for (let c = 0; c < COLS; c++) {
+                            for (let r = 0; r < ROWS; r++) {
+                                if (hybridCells[c][r] && firstFrameCells[c][r]) {
+                                    hybridCells[c][r].dateISO = firstFrameCells[c][r].dateISO;
+                                }
+                            }
+                        }
+                        cellsForExport = hybridCells;
+                    }
+                    const frameCanvas = createFrameCanvas(cellsForExport, includeLabels);
                     gif.addFrame(frameCanvas, { delay: frameDelay });
                 }
             }
@@ -1034,6 +1112,7 @@ document.addEventListener('DOMContentLoaded', () => {
             exportButtons.forEach(b => b.disabled = false);
         }
     }
+
 
     function downloadFile(data, filename) {
         const link = document.createElement('a');
@@ -1162,7 +1241,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
     
-    // --- NEW `shiftFrame` function ---
     function shiftFrame(dx, dy) {
         pushUndoState();
         const wrap = $('#frame-shift-wrap').checked;
