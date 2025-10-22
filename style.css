@@ -9,6 +9,7 @@
     --button-border: #1b1f2426;
     --accent-color: #0969da;
     --focus-ring-color: #0969da80;
+    --danger-color: #d73a49;
     --level-0-bg: #ebedf0;
     --level-1-bg: #9be9a8;
     --level-2-bg: #40c463;
@@ -28,7 +29,8 @@ body.dark-mode {
     --button-border: #30363d;
     --accent-color: #58a6ff;
     --focus-ring-color: #58a6ff80;
-    --level-0-bg: #161b22; /* Official GitHub dark mode empty cell color */
+    --danger-color: #f85149;
+    --level-0-bg: #161b22;
     --level-1-bg: #0e4429;
     --level-2-bg: #006d32;
     --level-3-bg: #26a641;
@@ -92,15 +94,57 @@ aside {
     display: flex;
     flex-direction: column;
     overflow: auto;
+    gap: 24px; /* Space between layers */
 }
-#heatmap-container {
+
+/* --- NEW: Styles for individual drawing areas (layers) --- */
+.heatmap-instance {
+    position: relative;
+    border: 2px solid transparent;
+    border-radius: 8px;
+    padding: 10px;
+    background-color: var(--panel-bg);
+    cursor: pointer;
+}
+
+.heatmap-instance.active-layer {
+    border-color: var(--accent-color);
+}
+
+.heatmap-container {
     position: relative;
     padding-left: 30px; /* Space for day labels */
     padding-top: 30px; /* Space for month labels */
     overflow-x: auto;
     width: 100%;
 }
-#heatmap-canvas {
+
+.close-layer-btn {
+    position: absolute;
+    top: -10px;
+    right: -10px;
+    width: 24px;
+    height: 24px;
+    padding: 0;
+    border-radius: 50%;
+    background-color: var(--bg-color);
+    border: 1px solid var(--border-color);
+    color: var(--muted-color);
+    font-size: 1.2rem;
+    line-height: 1;
+    font-weight: bold;
+    z-index: 10;
+    cursor: pointer;
+}
+.close-layer-btn:hover {
+    background-color: var(--danger-color);
+    color: white;
+    border-color: var(--danger-color);
+}
+/* --- END NEW --- */
+
+
+.heatmap-canvas { /* This is now a class for multiple canvases */
     cursor: crosshair;
     touch-action: none;
 }
@@ -171,7 +215,7 @@ label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.875rem
 .level-btn[data-level="3"] { background-color: var(--level-3-bg); }
 .level-btn[data-level="4"] { background-color: var(--level-4-bg); }
 
-.palette-editor, .thresholds, .io-buttons, .export-buttons, .frame-actions, .image-legend-actions, .zoom-controls { display: flex; flex-wrap: wrap; gap: 8px; }
+.palette-editor, .thresholds, .io-buttons, .export-buttons, .frame-actions, .image-legend-actions, .zoom-controls, .layer-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .image-legend-actions {
     flex-direction: column;
@@ -183,7 +227,7 @@ label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.875rem
     display: flex;
     flex-direction: column;
     gap: 8px;
-    max-height: 300px;
+    max-height: 200px; /* Adjusted height */
     overflow-y: auto;
     border: 1px solid var(--border-color);
     padding: 8px;
@@ -210,14 +254,14 @@ label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.875rem
     display: flex; 
     align-items: center; 
     gap: 12px; 
-    flex-wrap: wrap; /* ADDED */
+    flex-wrap: wrap;
 }
 .timeline-controls #anim-play { width: 36px; height: 36px; padding: 6px; }
 .timeline-controls #anim-play svg { width: 100%; height: 100%; fill: currentColor; }
 #anim-fps-display {
     font-size: 0.875rem;
     color: var(--muted-color);
-    width: 2em; /* Gives space for two digits */
+    width: 2em;
     text-align: right;
     font-variant-numeric: tabular-nums;
 }
@@ -227,7 +271,7 @@ label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.875rem
     gap: 12px;
     margin-top: 8px;
     align-items: center;
-    flex-wrap: wrap; /* ADDED */
+    flex-wrap: wrap;
 }
 .frame-move-buttons {
     display: flex;
@@ -241,7 +285,7 @@ label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.875rem
 }
 
 .export-options { margin-top: 8px; }
-.export-buttons { flex-wrap: wrap; } /* Allow buttons to wrap */
+.export-buttons { flex-wrap: wrap; }
 
 /* --- Game HUD --- */
 #game-hud {

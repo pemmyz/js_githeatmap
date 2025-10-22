@@ -16,18 +16,19 @@
         </div>
         <div class="header-right">
             <button id="game-mode-toggle" aria-label="Toggle Game Mode" title="Toggle Game Mode (T)">🎮 Game</button>
-            <button id="theme-toggle" aria-label="Toggle Dark/Light Theme" title="Toggle Dark/Light Theme">☀️</button>
+            <button id="theme-toggle" aria-label="Toggle Dark/Light Theme" title="Toggle Dark/Light Theme (V)">☀️</button>
         </div>
     </header>
 
     <main>
         <aside id="tools-panel">
+            <!-- Tools, Brush, Palette, Thresholds, Data, View sections remain the same -->
             <section class="panel-section">
                 <h3>Tools</h3>
                 <div class="toolbar">
                     <button class="tool-btn" data-tool="pencil" aria-pressed="true" title="Pencil (P)"><svg viewBox="0 0 24 24"><path d="M20.71,7.04C21.1,6.65 21.1,6 20.71,5.63L18.37,3.29C18,2.9 17.35,2.9 16.96,3.29L15.13,5.12L18.88,8.87M3,17.25V21H6.75L17.81,9.94L14.06,6.19L3,17.25Z" /></svg></button>
                     <button class="tool-btn" data-tool="rect" aria-pressed="false" title="Rectangle Fill (R)"><svg viewBox="0 0 24 24"><path d="M3,3V21H21V3H3M19,19H5V5H19V19Z" /></svg></button>
-                    <button class="tool-btn" data-tool="eraser" aria-pressed="false" title="Eraser (E)"><svg viewBox="0 0 24 24"><path d="M16.24,3.56L21.19,8.5C21.58,8.89 21.58,9.5 21.19,9.9L12.44,18.65C12.05,19.04 11.41,19.04 11.03,18.65L2.81,10.44C2.42,10.05 2.42,9.41 2.81,9.03L7.76,4.06C8.15,3.67 8.79,3.67 9.17,4.06L11.74,6.63L15.5,2.88C15.88,2.5 16.5,2.5 16.89,2.88L17.56,3.56H16.24M9.88,5.47L4.22,11.12L11.74,18.65L17.4,13L9.88,5.47Z" /></svg></button>
+                    <button class="tool-btn" data-tool="eraser" aria-pressed="false" title="Eraser (E)"><svg viewBox="0 0 24 24"><path d="M16.24,3.56L21.19,8.5C21.58,8.9 21.58,9.5 21.19,9.9L12.44,18.65C12.05,19.04 11.41,19.04 11.03,18.65L2.81,10.44C2.42,10.05 2.42,9.41 2.81,9.03L7.76,4.06C8.15,3.67 8.79,3.67 9.17,4.06L11.74,6.63L15.5,2.88C15.88,2.5 16.5,2.5 16.89,2.88L17.56,3.56H16.24M9.88,5.47L4.22,11.12L11.74,18.65L17.4,13L9.88,5.47Z" /></svg></button>
                     <button class="tool-btn" data-tool="picker" aria-pressed="false" title="Picker (I)"><svg viewBox="0 0 24 24"><path d="M19.35,11.6L17.88,10.13C17.96,9.44 18,8.73 18,8C18,4.69 15.31,2 12,2C8.69,2 6,4.69 6,8C6,11.31 8.69,14 12,14C12.73,14 13.44,13.96 14.13,13.88L15.6,15.35L12,19V22H15L21.22,15.78C21.66,15.34 21.66,14.63 21.22,14.19L19.35,11.6M12,12C9.79,12 8,10.21 8,8C8,5.79 9.79,4 12,4C14.21,4 16,5.79 16,8C16,10.21 14.21,12 12,12Z" /></svg></button>
                 </div>
             </section>
@@ -104,30 +105,16 @@
                 <div id="image-legend-controls" class="hidden">
                     <label>Opacity: <input type="range" id="image-opacity" min="0" max="1" step="0.05" value="0.3"></label>
                     <label>Threshold: <input type="range" id="image-threshold" min="0" max="255" step="1" value="128"></label>
-                    <button id="apply-image-legend">Apply to Frame</button>
+                    <button id="apply-image-legend">Apply to Layer</button>
                     <button id="clear-image-legend">Clear Image</button>
                 </div>
             </section>
         </aside>
 
         <div id="main-content">
-            <div id="heatmap-container">
-                <div class="heatmap-labels-top">
-                    <span class="heatmap-month-label"></span>
-                </div>
-                <div class="heatmap-body">
-                    <div class="heatmap-labels-left">
-                        <span></span>
-                        <span>Mon</span>
-                        <span></span>
-                        <span>Wed</span>
-                        <span></span>
-                        <span>Fri</span>
-                        <span></span>
-                    </div>
-                    <canvas id="heatmap-canvas"></canvas>
-                </div>
-            </div>
+            <!-- This container will be dynamically filled with drawing areas by script.js -->
+            <div id="drawing-area-container"></div>
+            
             <div id="game-hud" class="hidden">
                 <div class="game-hud-item">Score: <span id="game-score">0</span></div>
                 <div class="game-controls">
@@ -151,6 +138,12 @@
                     <label title="Show previous frame as an overlay (Onion Skin)">
                         <input type="checkbox" id="anim-onion-skin"> Onion Skin
                     </label>
+                </div>
+            </section>
+            <section class="panel-section">
+                <h3>Layers</h3>
+                <div class="layer-actions">
+                    <button id="add-layer-btn">Add Draw Area</button>
                 </div>
             </section>
             <section class="panel-section">
@@ -191,7 +184,6 @@
     </main>
 
     <footer>
-        <!-- UPDATED THIS LINE -->
         <p>Shortcuts: [1-5] Levels | [P] Pencil | [R] Rect | [E] Eraser | [I] Picker | [A] Add/Set | [G] Grid | [T] Game | [V] Theme | [Ctrl+Z] Undo | [Ctrl+Y] Redo</p>
     </footer>
 

@@ -13,11 +13,14 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- DOM ELEMENTS ---
     const $ = (selector) => document.querySelector(selector);
     const $$ = (selector) => document.querySelectorAll(selector);
-    const canvas = $('#heatmap-canvas');
-    const ctx = canvas.getContext('2d');
+    const drawingAreaContainer = $('#drawing-area-container');
     const totalContributionsEl = $('#total-contributions');
     const themeToggle = $('#theme-toggle');
     const gameModeToggle = $('#game-mode-toggle');
+
+    // --- DYNAMIC INSTANCES ---
+    let canvasInstances = [];
+    let ctxInstances = [];
 
     // --- STATE MANAGEMENT ---
     let state = {};
@@ -25,9 +28,8 @@ document.addEventListener('DOMContentLoaded', () => {
     const redoStack = [];
 
     const defaultState = {
-        cells: [],
         thresholds: [1, 4, 8, 13],
-        palette: [...PRESETS.dark], 
+        palette: [...PRESETS.dark],
         currentTool: 'pencil',
         brush: {
             mode: 'level',
@@ -40,6 +42,7 @@ document.addEventListener('DOMContentLoaded', () => {
         },
         frames: [],
         currentFrameIndex: 0,
+        activeLayerIndex: 0,
         animation: {
             playing: false,
             fps: 10,
@@ -67,20 +70,26 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- INITIALIZATION ---
     function init() {
-        ctx.imageSmoothingEnabled = false;
         loadState();
-        if (state.cells.length === 0) {
-            generateGridData();
-            state.frames.push(createFrame());
+        if (state.frames.length === 0) {
+            const firstLayer = { cells: generateGridData() };
+            const firstFrame = { layers: [firstLayer] };
+            state.frames.push(firstFrame);
+            state.currentFrameIndex = 0;
+            state.activeLayerIndex = 0;
         }
         setupEventListeners();
-        resizeCanvas();
+        rebuildDrawingAreasDOM();
         updateUIFromState();
         applyTheme(localStorage.getItem('theme') || 'dark');
         requestAnimationFrame(mainLoop);
     }
-
+    
     // --- HELPER FUNCTIONS ---
+    function getActiveCells() {
+        return state.frames[state.currentFrameIndex]?.layers[state.activeLayerIndex]?.cells;
+    }
+
     function darkenColor(hex, amount) {
         if (!hex || hex === 'transparent' || hex.length < 4) return '#00000000';
         let color = hex.startsWith('#') ? hex.slice(1) : hex;
@@ -137,7 +146,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- DATA & GRID LOGIC ---
     function generateGridData() {
-        state.cells = Array.from({ length: COLS }, () => new Array(ROWS).fill(null));
+        const cells = Array.from({ length: COLS }, () => new Array(ROWS).fill(null));
         const endDate = new Date();
         const startDate = new Date();
         startDate.setDate(endDate.getDate() - (COLS * ROWS - 1));
@@ -147,7 +156,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const dayOfWeek = currentDate.getDay();
             const weekIndex = Math.floor((currentDate - startDate) / (1000 * 60 * 60 * 24 * 7));
             if (weekIndex < COLS) {
-                state.cells[weekIndex][dayOfWeek] = {
+                cells[weekIndex][dayOfWeek] = {
                     dateISO: currentDate.toISOString().split('T')[0],
                     count: 0,
                     level: 0,
@@ -155,10 +164,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             currentDate.setDate(currentDate.getDate() + 1);
         }
-        recalculateAllLevels();
-        updateTotalContributions();
+        recalculateAllLevels(cells);
+        return cells;
     }
-    
+
     function calculateLevel(count) {
         if (count === 0) return 0;
         if (count >= state.thresholds[3]) return 4;
@@ -168,8 +177,9 @@ document.addEventListener('DOMContentLoaded', () => {
         return 0;
     }
 
-    function recalculateAllLevels() {
-        for (const col of state.cells) {
+    function recalculateAllLevels(cells) {
+        if (!cells) return;
+        for (const col of cells) {
             for (const cell of col) {
                 if(cell) cell.level = calculateLevel(cell.count);
             }
@@ -177,7 +187,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function updateTotalContributions() {
-        const total = state.cells.flat().reduce((sum, cell) => sum + (cell ? cell.count : 0), 0);
+        const cells = getActiveCells();
+        if (!cells) return;
+        const total = cells.flat().reduce((sum, cell) => sum + (cell ? cell.count : 0), 0);
         totalContributionsEl.textContent = total.toLocaleString();
     }
     
@@ -197,10 +209,12 @@ document.addEventListener('DOMContentLoaded', () => {
                 state = { ...defaultState, ...parsed };
                 state.frames = state.frames || [];
                 state.currentFrameIndex = Math.min(state.currentFrameIndex, state.frames.length - 1);
-                if (state.frames.length === 0 && state.cells.length > 0) {
-                   state.frames.push(createFrame());
-                   state.currentFrameIndex = 0;
+                state.activeLayerIndex = state.activeLayerIndex || 0;
+                if (state.frames.length > 0 && (!state.frames[0].layers || state.frames[0].layers.length === 0)) {
+                    // Migration from old format
+                    state.frames = state.frames.map(frame => ({ layers: [{ cells: frame.cells }] }));
                 }
+
             } catch (e) {
                 console.error("Failed to load state:", e);
                 state = { ...defaultState };
@@ -213,9 +227,9 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- UNDO / REDO ---
     function pushUndoState() {
         undoStack.push(JSON.stringify({
-            cells: state.cells,
+            frames: state.frames,
             currentFrameIndex: state.currentFrameIndex,
-            frames: state.frames
+            activeLayerIndex: state.activeLayerIndex
         }));
         redoStack.length = 0;
         if (undoStack.length > 50) undoStack.shift();
@@ -224,43 +238,109 @@ document.addEventListener('DOMContentLoaded', () => {
     function undo() {
         if (undoStack.length === 0) return;
         const prevState = JSON.parse(undoStack.pop());
-        redoStack.push(JSON.stringify({ cells: state.cells, currentFrameIndex: state.currentFrameIndex, frames: state.frames }));
-        state.cells = prevState.cells;
+        redoStack.push(JSON.stringify({
+            frames: state.frames,
+            currentFrameIndex: state.currentFrameIndex,
+            activeLayerIndex: state.activeLayerIndex
+        }));
         state.frames = prevState.frames;
         state.currentFrameIndex = prevState.currentFrameIndex;
-        syncFrameAndCells(true);
+        state.activeLayerIndex = prevState.activeLayerIndex;
+        rebuildDrawingAreasDOM();
         updateUIFromState();
-        render();
         saveState();
     }
 
     function redo() {
         if (redoStack.length === 0) return;
         const nextState = JSON.parse(redoStack.pop());
-        undoStack.push(JSON.stringify({ cells: state.cells, currentFrameIndex: state.currentFrameIndex, frames: state.frames }));
-        state.cells = nextState.cells;
+        undoStack.push(JSON.stringify({
+            frames: state.frames,
+            currentFrameIndex: state.currentFrameIndex,
+            activeLayerIndex: state.activeLayerIndex
+        }));
         state.frames = nextState.frames;
         state.currentFrameIndex = nextState.currentFrameIndex;
-        syncFrameAndCells(true);
+        state.activeLayerIndex = nextState.activeLayerIndex;
+        rebuildDrawingAreasDOM();
         updateUIFromState();
-        render();
         saveState();
     }
 
-    // --- RENDERING ---
+    // --- DOM & CANVAS MANAGEMENT ---
     let cellSize, gap;
-    function resizeCanvas() {
-        const container = $('#heatmap-container');
-        const dpr = window.devicePixelRatio || 1;
+    function rebuildDrawingAreasDOM() {
+        drawingAreaContainer.innerHTML = '';
+        canvasInstances = [];
+        ctxInstances = [];
+        const currentFrame = state.frames[state.currentFrameIndex];
+        if (!currentFrame || !currentFrame.layers) return;
+
+        currentFrame.layers.forEach((layer, index) => {
+            const instanceWrapper = document.createElement('div');
+            instanceWrapper.className = 'heatmap-instance';
+            instanceWrapper.dataset.layerIndex = index;
+            if (index === state.activeLayerIndex) {
+                instanceWrapper.classList.add('active-layer');
+            }
+
+            if (index > 0) {
+                const closeBtn = document.createElement('button');
+                closeBtn.className = 'close-layer-btn';
+                closeBtn.innerHTML = '&times;';
+                closeBtn.title = 'Remove Layer';
+                closeBtn.addEventListener('click', (e) => {
+                    e.stopPropagation();
+                    deleteLayer(index);
+                });
+                instanceWrapper.appendChild(closeBtn);
+            }
+
+            const container = document.createElement('div');
+            container.className = 'heatmap-container';
+
+            const labelsTop = document.createElement('div');
+            labelsTop.className = 'heatmap-labels-top';
+            const labelsLeft = document.createElement('div');
+            labelsLeft.className = 'heatmap-labels-left';
+            labelsLeft.innerHTML = `<span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span>`;
+            
+            const canvas = document.createElement('canvas');
+            canvas.className = 'heatmap-canvas';
+            canvas.dataset.layerIndex = index;
+            
+            container.appendChild(labelsTop);
+            container.appendChild(labelsLeft);
+            container.appendChild(canvas);
+            instanceWrapper.appendChild(container);
+            drawingAreaContainer.appendChild(instanceWrapper);
+            
+            const ctx = canvas.getContext('2d');
+            ctx.imageSmoothingEnabled = false;
+            canvasInstances.push(canvas);
+            ctxInstances.push(ctx);
+
+            instanceWrapper.addEventListener('click', () => setActiveLayer(index));
+            canvas.addEventListener('pointerdown', handlePointerDown);
+            canvas.addEventListener('pointermove', handlePointerMove);
+            canvas.addEventListener('pointerup', handlePointerUp);
+            canvas.addEventListener('pointerleave', () => { isDrawing = false; selection.active=false; renderAllLayers(); });
+        });
         
+        resizeAndRenderAll();
+    }
+
+    function resizeAndRenderAll() {
+        if (canvasInstances.length === 0) return;
+        const container = $('.heatmap-container');
+        const dpr = window.devicePixelRatio || 1;
         gap = GAP_SIZE;
 
         if (state.view.fitToWidth) {
             const style = getComputedStyle(container);
             const paddingX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
             const availableWidth = container.clientWidth - paddingX;
-            const newCellSize = Math.floor(((availableWidth + gap) / COLS) - gap);
-            cellSize = Math.max(2, newCellSize);
+            cellSize = Math.max(2, Math.floor(((availableWidth + gap) / COLS) - gap));
         } else {
             cellSize = BASE_CELL_SIZE * state.view.zoom;
         }
@@ -268,38 +348,56 @@ document.addEventListener('DOMContentLoaded', () => {
         const w = (cellSize + gap) * COLS - gap;
         const h = (cellSize + gap) * ROWS - gap;
 
-        canvas.width = w * dpr;
-        canvas.height = h * dpr;
-        canvas.style.width = `${w}px`;
-        canvas.style.height = `${h}px`;
-        ctx.scale(dpr, dpr);
-        ctx.imageSmoothingEnabled = false;
-        render();
-        renderMonthLabels();
+        canvasInstances.forEach(canvas => {
+            canvas.width = w * dpr;
+            canvas.height = h * dpr;
+            canvas.style.width = `${w}px`;
+            canvas.style.height = `${h}px`;
+            const ctx = canvas.getContext('2d');
+            ctx.scale(dpr, dpr);
+            ctx.imageSmoothingEnabled = false;
+        });
+        
+        renderAllLayers();
+        renderAllMonthLabels();
     }
 
-    function render() {
-        if (typeof cellSize === 'undefined') return;
-        ctx.clearRect(0, 0, canvas.width, canvas.height);
-        if (state.imageLegend.img) {
-            ctx.globalAlpha = state.imageLegend.opacity;
-            ctx.drawImage(state.imageLegend.img, 0, 0, (cellSize+gap)*COLS, (cellSize+gap)*ROWS);
-            ctx.globalAlpha = 1.0;
-        }
-        if (state.animation.onionSkin && state.animation.playing && state.currentFrameIndex > 0) {
-            const prevFrame = state.frames[state.currentFrameIndex - 1];
-            if (prevFrame) {
-                drawGrid(prevFrame.cells, 0.3);
+    function renderAllLayers() {
+        const currentFrame = state.frames[state.currentFrameIndex];
+        if (!currentFrame || !currentFrame.layers) return;
+        
+        currentFrame.layers.forEach((layer, index) => {
+            const ctx = ctxInstances[index];
+            if (!ctx) return;
+            ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
+            
+            if (index === state.activeLayerIndex && state.imageLegend.img) {
+                ctx.globalAlpha = state.imageLegend.opacity;
+                ctx.drawImage(state.imageLegend.img, 0, 0, (cellSize+gap)*COLS, (cellSize+gap)*ROWS);
+                ctx.globalAlpha = 1.0;
             }
-        }
-        drawGrid(state.cells);
-        if (selection.active) drawSelection();
-        if (state.game.active) {
-            renderGame();
-        }
+            
+            if (index === state.activeLayerIndex && state.animation.onionSkin && state.animation.playing && state.currentFrameIndex > 0) {
+                const prevFrame = state.frames[state.currentFrameIndex - 1];
+                const prevLayer = prevFrame?.layers[state.activeLayerIndex];
+                if (prevLayer) {
+                    drawGrid(ctx, prevLayer.cells, 0.3);
+                }
+            }
+
+            drawGrid(ctx, layer.cells);
+            
+            if (index === state.activeLayerIndex && selection.active) {
+                drawSelection(ctx);
+            }
+            if (index === state.activeLayerIndex && state.game.active) {
+                renderGame(ctx);
+            }
+        });
     }
-    
-    function drawGrid(cells, alpha = 1.0) {
+
+    function drawGrid(ctx, cells, alpha = 1.0) {
+        if (!cells) return;
         ctx.globalAlpha = alpha;
         for (let c = 0; c < COLS; c++) {
             for (let r = 0; r < ROWS; r++) {
@@ -314,33 +412,36 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.globalAlpha = 1.0;
     }
 
-    function renderMonthLabels() {
-        const container = $('.heatmap-labels-top');
-        container.innerHTML = '';
-        if (!state.cells || state.cells.length === 0) return;
-        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-        let lastMonth = -1;
-        for (let c = 0; c < COLS; c++) {
-            const cell = state.cells[c]?.find(cell => cell);
-            if (!cell) continue;
-            const date = new Date(cell.dateISO + 'T00:00:00');
-            const month = date.getUTCMonth();
-            if (month !== lastMonth && date.getUTCDate() < 8) {
-                const label = document.createElement('span');
-                label.className = 'heatmap-month-label';
-                label.textContent = months[month];
-                label.style.left = `${c * (cellSize + gap)}px`;
-                container.appendChild(label);
-                lastMonth = month;
+    function renderAllMonthLabels() {
+        $$('.heatmap-labels-top').forEach((container, index) => {
+            container.innerHTML = '';
+            const cells = state.frames[state.currentFrameIndex]?.layers[index]?.cells;
+            if (!cells || cells.length === 0) return;
+            const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+            let lastMonth = -1;
+            for (let c = 0; c < COLS; c++) {
+                const cell = cells[c]?.find(cell => cell);
+                if (!cell) continue;
+                const date = new Date(cell.dateISO + 'T00:00:00');
+                const month = date.getUTCMonth();
+                if (month !== lastMonth && date.getUTCDate() < 8) {
+                    const label = document.createElement('span');
+                    label.className = 'heatmap-month-label';
+                    label.textContent = months[month];
+                    label.style.left = `${c * (cellSize + gap)}px`;
+                    container.appendChild(label);
+                    lastMonth = month;
+                }
             }
-        }
+        });
     }
-    
+
     // --- DRAWING & TOOLS ---
     let isDrawing = false;
     let selection = { active: false, x1: 0, y1: 0, x2: 0, y2: 0 };
     
     function getCellFromCoords(e) {
+        const canvas = e.target;
         const rect = canvas.getBoundingClientRect();
         const x = e.clientX - rect.left;
         const y = e.clientY - rect.top;
@@ -351,6 +452,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function handlePointerDown(e) {
+        const layerIndex = parseInt(e.target.dataset.layerIndex);
+        setActiveLayer(layerIndex);
         if (state.game.active) return;
         isDrawing = true;
         const pos = getCellFromCoords(e);
@@ -365,7 +468,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 break;
             case 'picker': pickColor(pos.c, pos.r); break;
         }
-        render();
+        renderAllLayers();
     }
     
     function handlePointerMove(e) {
@@ -379,7 +482,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 selection.y2 = pos.r;
                 break;
         }
-        render();
+        renderAllLayers();
     }
     
     function handlePointerUp(e) {
@@ -389,15 +492,15 @@ document.addEventListener('DOMContentLoaded', () => {
             applyRectFill();
         }
         selection.active = false;
-        syncFrameAndCells();
         updateTotalContributions();
-        updateFramesUI();
+        updateFramesUI(); // This updates the thumbnail
         saveState();
-        render();
+        renderAllLayers();
     }
     
     function applyBrush(c, r) {
-        const cell = state.cells[c]?.[r];
+        const cells = getActiveCells();
+        const cell = cells?.[c]?.[r];
         if (!cell) return;
         if (state.currentTool === 'eraser') {
             cell.count = 0;
@@ -421,7 +524,8 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function pickColor(c, r) {
-        const cell = state.cells[c]?.[r];
+        const cells = getActiveCells();
+        const cell = cells?.[c]?.[r];
         if (!cell) return;
         state.brush.level = cell.level;
         state.brush.addN = cell.count;
@@ -429,7 +533,7 @@ document.addEventListener('DOMContentLoaded', () => {
         updateBrushUI();
     }
 
-    function drawSelection() {
+    function drawSelection(ctx) {
         const c1 = Math.min(selection.x1, selection.x2), c2 = Math.max(selection.x1, selection.x2);
         const r1 = Math.min(selection.y1, selection.y2), r2 = Math.max(selection.y1, selection.y2);
         const x = c1 * (cellSize + gap), y = r1 * (cellSize + gap);
@@ -438,15 +542,61 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.lineWidth = 2;
         ctx.strokeRect(x - 1, y - 1, w + 2, h + 2);
     }
+
+    // --- LAYERS LOGIC ---
+    function addLayer() {
+        pushUndoState();
+        const newLayerCells = generateGridData();
+        state.frames.forEach(frame => {
+            frame.layers.push({ cells: JSON.parse(JSON.stringify(newLayerCells)) });
+        });
+        state.activeLayerIndex = state.frames[0].layers.length - 1;
+        rebuildDrawingAreasDOM();
+        saveState();
+    }
+
+    function deleteLayer(layerIndex) {
+        if (state.frames[0].layers.length <= 1) {
+            alert("Cannot delete the last layer.");
+            return;
+        }
+        if (!confirm("Are you sure you want to delete this layer from all frames? This cannot be undone.")) {
+            return;
+        }
+        pushUndoState();
+        state.frames.forEach(frame => {
+            frame.layers.splice(layerIndex, 1);
+        });
+        if (state.activeLayerIndex >= layerIndex) {
+            state.activeLayerIndex = Math.max(0, state.activeLayerIndex - 1);
+        }
+        rebuildDrawingAreasDOM();
+        saveState();
+    }
     
+    function setActiveLayer(layerIndex) {
+        if (state.activeLayerIndex === layerIndex && document.querySelector(`.heatmap-instance[data-layer-index="${layerIndex}"]`)?.classList.contains('active-layer')) return;
+        
+        state.activeLayerIndex = layerIndex;
+
+        $$('.heatmap-instance').forEach(el => {
+            el.classList.toggle('active-layer', parseInt(el.dataset.layerIndex) === layerIndex);
+        });
+        
+        updateTotalContributions();
+        updateFramesUI(); // Update thumbnails to reflect the new active layer
+        renderAllLayers();
+        saveState();
+    }
+
+    // --- EVENT LISTENERS ---
     function setupEventListeners() {
-        window.addEventListener('resize', debounce(resizeCanvas, 200));
+        window.addEventListener('resize', debounce(resizeAndRenderAll, 200));
         themeToggle.addEventListener('click', toggleTheme);
         gameModeToggle.addEventListener('click', () => toggleGameMode());
-        canvas.addEventListener('pointerdown', handlePointerDown);
-        canvas.addEventListener('pointermove', handlePointerMove);
-        canvas.addEventListener('pointerup', handlePointerUp);
-        canvas.addEventListener('pointerleave', () => { isDrawing = false; selection.active=false; render(); });
+        
+        $('#add-layer-btn').addEventListener('click', addLayer);
+
         $('.toolbar').addEventListener('click', e => {
             const btn = e.target.closest('.tool-btn');
             if (btn) {
@@ -474,14 +624,14 @@ document.addEventListener('DOMContentLoaded', () => {
             state.palette = [...PRESETS[e.target.value]];
             updatePaletteUI();
             saveState();
-            render();
+            renderAllLayers();
         });
         $('.palette-editor').addEventListener('input', e => {
             if (e.target.matches('input[type="color"]')) {
                 const level = parseInt(e.target.dataset.level);
                 state.palette[level] = e.target.value;
                 saveState();
-                render();
+                renderAllLayers();
             }
         });
         $('.thresholds').addEventListener('input', e => {
@@ -493,11 +643,11 @@ document.addEventListener('DOMContentLoaded', () => {
                         state.thresholds[i] = state.thresholds[i-1] + 1;
                     }
                 }
-                recalculateAllLevels();
+                recalculateAllLevels(getActiveCells());
                 updateThresholdsUI();
-                syncFrameAndCells();
+                updateFramesUI();
                 saveState();
-                render();
+                renderAllLayers();
             }
         });
         $('#import-json').addEventListener('click', () => openFilePicker('.json'));
@@ -506,33 +656,14 @@ document.addEventListener('DOMContentLoaded', () => {
         $('#export-csv').addEventListener('click', exportCSV);
         $('#file-input').addEventListener('change', handleFileLoad);
         
-        $('#zoom-100').addEventListener('click', () => {
-            state.view.fitToWidth = false;
-            state.view.zoom = 1.0;
-            resizeCanvas();
-            saveState();
-        });
-        $('#zoom-150').addEventListener('click', () => {
-            state.view.fitToWidth = false;
-            state.view.zoom = 1.5;
-            resizeCanvas();
-            saveState();
-        });
-        $('#zoom-200').addEventListener('click', () => {
-            state.view.fitToWidth = false;
-            state.view.zoom = 2.0;
-            resizeCanvas();
-            saveState();
-        });
-        $('#zoom-fit').addEventListener('click', () => {
-            state.view.fitToWidth = true;
-            resizeCanvas();
-            saveState();
-        });
+        $('#zoom-100').addEventListener('click', () => { state.view.fitToWidth = false; state.view.zoom = 1.0; resizeAndRenderAll(); saveState(); });
+        $('#zoom-150').addEventListener('click', () => { state.view.fitToWidth = false; state.view.zoom = 1.5; resizeAndRenderAll(); saveState(); });
+        $('#zoom-200').addEventListener('click', () => { state.view.fitToWidth = false; state.view.zoom = 2.0; resizeAndRenderAll(); saveState(); });
+        $('#zoom-fit').addEventListener('click', () => { state.view.fitToWidth = true; resizeAndRenderAll(); saveState(); });
 
         $('#load-image-legend').addEventListener('click', () => openFilePicker('image/*'));
         $('#reset-all-settings').addEventListener('click', resetAllSettings);
-        $('#image-opacity').addEventListener('input', e => { state.imageLegend.opacity = parseFloat(e.target.value); render(); });
+        $('#image-opacity').addEventListener('input', e => { state.imageLegend.opacity = parseFloat(e.target.value); renderAllLayers(); });
         $('#image-threshold').addEventListener('input', e => { state.imageLegend.threshold = parseInt(e.target.value); });
         $('#apply-image-legend').addEventListener('click', applyImageToFrame);
         $('#clear-image-legend').addEventListener('click', clearImageLegend);
@@ -604,7 +735,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 state.brush.mode = (state.brush.mode === 'level') ? 'add' : 'level';
                 $('input[name="brush-mode"][value="'+state.brush.mode+'"]').checked = true;
             },
-            'g': () => { state.showGrid = !state.showGrid; render(); },
+            'g': () => { state.showGrid = !state.showGrid; renderAllLayers(); },
             't': () => toggleGameMode(),
             'v': toggleTheme,
         };
@@ -632,7 +763,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         
         updatePaletteUI();
-        render();
+        renderAllLayers();
     }
     function toggleTheme() {
         const newTheme = document.body.classList.contains('dark-mode') ? 'light' : 'dark';
@@ -674,9 +805,8 @@ document.addEventListener('DOMContentLoaded', () => {
         try {
             const importedState = JSON.parse(content);
             state = { ...defaultState, ...importedState };
-            syncFrameAndCells(true);
+            rebuildDrawingAreasDOM();
             updateUIFromState();
-            render();
         } catch (err) { alert('Error parsing JSON file.'); console.error(err); }
     }
     function exportJSON() {
@@ -685,8 +815,10 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function importCSV(content) {
+        const cells = getActiveCells();
+        if (!cells) return;
         const lines = content.split('\n').map(l => l.trim()).filter(Boolean);
-        const dateMap = new Map(state.cells.flat().filter(Boolean).map(cell => [cell.dateISO, cell]));
+        const dateMap = new Map(cells.flat().filter(Boolean).map(cell => [cell.dateISO, cell]));
         let changed = 0;
         lines.forEach(line => {
             const parts = line.split(',');
@@ -699,16 +831,18 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         });
-        recalculateAllLevels();
-        syncFrameAndCells();
+        recalculateAllLevels(cells);
+        updateFramesUI(); // update thumbnail
         updateUIFromState();
-        render();
+        renderAllLayers();
         alert(`Imported ${changed} data points from CSV.`);
     }
 
     function exportCSV() {
         let csvContent = "date,count\n";
-        state.cells.flat().filter(Boolean).forEach(cell => {
+        const cells = getActiveCells();
+        if (!cells) return;
+        cells.flat().filter(Boolean).forEach(cell => {
             if (cell.count > 0) { csvContent += `${cell.dateISO},${cell.count}\n`; }
         });
         const dataStr = "data:text/csv;charset=utf-8," + encodeURIComponent(csvContent);
@@ -716,8 +850,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     // --- EXPORT RENDERING LOGIC ---
-    // NOTE: These functions intentionally use the BASE constants to ensure exports are always at 100% scale.
-
     function drawFrameWithLabels(tempCtx, cells) {
         const PADDING = 30;
         const exportCellSize = BASE_CELL_SIZE;
@@ -794,10 +926,10 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function exportFrame(format = 'image/png') {
         const includeLabels = $('#export-include-labels').checked;
-        const frameCanvas = createFrameCanvas(state.cells, includeLabels);
+        const frameCanvas = createFrameCanvas(getActiveCells(), includeLabels);
         const dataURL = frameCanvas.toDataURL(format);
         const ext = format.split('/')[1];
-        downloadFile(dataURL, `frame-${state.currentFrameIndex}.${ext}`);
+        downloadFile(dataURL, `frame-${state.currentFrameIndex}-layer-${state.activeLayerIndex}.${ext}`);
     }
 
     function exportAnimation() {
@@ -806,36 +938,46 @@ document.addEventListener('DOMContentLoaded', () => {
         warningEl.textContent = "This will trigger multiple downloads.";
         warningEl.classList.remove('hidden');
         const includeLabels = $('#export-include-labels').checked;
-        let frameIndex = 0;
-        const downloadNextFrame = () => {
-            if (frameIndex >= state.frames.length) {
+        
+        let downloadIndex = 0;
+        const downloads = [];
+        state.frames.forEach((frame, frameIdx) => {
+            frame.layers.forEach((layer, layerIdx) => {
+                downloads.push({frame, layer, frameIdx, layerIdx});
+            });
+        });
+
+        const downloadNext = () => {
+            if (downloadIndex >= downloads.length) {
                 warningEl.classList.add('hidden');
                 return;
             }
-            const frame = state.frames[frameIndex];
-            const frameCanvas = createFrameCanvas(frame.cells, includeLabels);
+            const { layer, frameIdx, layerIdx } = downloads[downloadIndex];
+            const frameCanvas = createFrameCanvas(layer.cells, includeLabels);
             const dataURL = frameCanvas.toDataURL('image/png');
-            downloadFile(dataURL, `anim-frame-${String(frameIndex).padStart(3, '0')}.png`);
-            frameIndex++;
-            setTimeout(downloadNextFrame, 200);
+            downloadFile(dataURL, `anim-F${String(frameIdx).padStart(3, '0')}-L${layerIdx}.png`);
+            downloadIndex++;
+            setTimeout(downloadNext, 200);
         };
-        downloadNextFrame();
+        downloadNext();
     }
 
     async function exportAnimationWEBP() {
-        if (state.frames.length <= 1) { return alert("Animation requires at least 2 frames."); }
+        if (state.frames.length <= 1 && state.frames[0].layers.length <= 1) { return alert("Animation requires at least 2 steps (frames or layers)."); }
         const warningEl = $('#export-anim-warning');
         const exportButtons = $$('.export-buttons button, #export-anim-webp');
         const includeLabels = $('#export-include-labels').checked;
         const frameDuration = 1000 / state.animation.fps;
         try {
-            warningEl.textContent = `Processing ${state.frames.length} frames...`;
+            warningEl.textContent = `Processing all frames and layers...`;
             warningEl.classList.remove('hidden');
             exportButtons.forEach(b => b.disabled = true);
             const writer = new WebPWriter();
             for (const frame of state.frames) {
-                const frameCanvas = createFrameCanvas(frame.cells, includeLabels);
-                writer.addFrame(frameCanvas.toDataURL('image/webp', {quality: 0.8}), { duration: frameDuration });
+                for (const layer of frame.layers) {
+                    const frameCanvas = createFrameCanvas(layer.cells, includeLabels);
+                    writer.addFrame(frameCanvas.toDataURL('image/webp', {quality: 0.8}), { duration: frameDuration });
+                }
             }
             warningEl.textContent = "Encoding WEBP... Please wait.";
             const webpBlob = await writer.complete({ loop: 0 }); 
@@ -852,7 +994,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     async function exportAnimationGIF() {
-        if (state.frames.length <= 1) { return alert("Animation requires at least 2 frames."); }
+        if (state.frames.length <= 1 && state.frames[0].layers.length <= 1) { return alert("Animation requires at least 2 steps (frames or layers)."); }
         const warningEl = $('#export-anim-warning');
         const exportButtons = $$('.export-buttons button, #export-anim-gif');
         const includeLabels = $('#export-include-labels').checked;
@@ -867,8 +1009,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 warningEl.textContent = `Encoding GIF... ${progressPercent}%`;
             });
             for (const frame of state.frames) {
-                const frameCanvas = createFrameCanvas(frame.cells, includeLabels);
-                gif.addFrame(frameCanvas, { delay: frameDelay });
+                for (const layer of frame.layers) {
+                    const frameCanvas = createFrameCanvas(layer.cells, includeLabels);
+                    gif.addFrame(frameCanvas, { delay: frameDelay });
+                }
             }
             await new Promise((resolve, reject) => {
                 gif.on('finished', (blob) => {
@@ -903,7 +1047,7 @@ document.addEventListener('DOMContentLoaded', () => {
         img.onload = () => {
             state.imageLegend.img = img;
             $('#image-legend-controls').classList.remove('hidden');
-            render();
+            renderAllLayers();
         };
         img.src = dataURL;
     }
@@ -911,12 +1055,15 @@ document.addEventListener('DOMContentLoaded', () => {
     function clearImageLegend() {
         state.imageLegend.img = null;
         $('#image-legend-controls').classList.add('hidden');
-        render();
+        renderAllLayers();
     }
     
     function applyImageToFrame() {
         if (!state.imageLegend.img) return;
         pushUndoState();
+        const cells = getActiveCells();
+        if (!cells) return;
+
         const tempCanvas = document.createElement('canvas');
         const tempCtx = tempCanvas.getContext('2d');
         tempCanvas.width = COLS; tempCanvas.height = ROWS;
@@ -926,7 +1073,7 @@ document.addEventListener('DOMContentLoaded', () => {
             for (let r = 0; r < ROWS; r++) {
                 const index = (r * COLS + c) * 4;
                 const brightness = (imageData.data[index] + imageData.data[index+1] + imageData.data[index+2]) / 3;
-                const cell = state.cells[c][r];
+                const cell = cells[c][r];
                 if(cell) {
                     const level = Math.floor(brightness / 256 * 5);
                     const minCount = state.thresholds[level - 1] || (level > 0 ? 1 : 0);
@@ -934,10 +1081,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
         }
-        recalculateAllLevels();
-        syncFrameAndCells();
+        recalculateAllLevels(cells);
+        updateFramesUI();
         updateUIFromState();
-        render();
+        renderAllLayers();
     }
 
     let dragSrcElement = null;
@@ -949,10 +1096,16 @@ document.addEventListener('DOMContentLoaded', () => {
             item.className = 'frame-item';
             item.dataset.index = index;
             if (index === state.currentFrameIndex) item.classList.add('selected');
+
             const thumbCanvas = document.createElement('canvas');
             thumbCanvas.width = 106;
             thumbCanvas.height = 14;
-            drawThumbnail(thumbCanvas, frame.cells);
+            
+            // The thumbnail should be of the active layer for that frame
+            const activeLayerCells = frame.layers[state.activeLayerIndex]?.cells;
+            if (activeLayerCells) {
+                drawThumbnail(thumbCanvas, activeLayerCells);
+            }
             const indexEl = document.createElement('span');
             indexEl.className = 'frame-index';
             indexEl.textContent = index;
@@ -989,6 +1142,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 state.currentFrameIndex++;
             }
             updateFramesUI();
+            rebuildDrawingAreasDOM(); // To show correct frame data
             saveState();
         }
     }
@@ -1007,65 +1161,96 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     }
-    function createFrame() { return { cells: JSON.parse(JSON.stringify(state.cells)) }; }
-    function syncFrameAndCells(fromFrameToCells = false) {
-        if(state.frames.length === 0 || !state.frames[state.currentFrameIndex]) return;
-        if (fromFrameToCells) {
-            state.cells = JSON.parse(JSON.stringify(state.frames[state.currentFrameIndex].cells));
-        } else {
-            state.frames[state.currentFrameIndex] = createFrame();
-        }
-    }
     
+    // --- NEW `shiftFrame` function ---
     function shiftFrame(dx, dy) {
         pushUndoState();
         const wrap = $('#frame-shift-wrap').checked;
         const currentFrame = state.frames[state.currentFrameIndex];
-        const originalCells = JSON.parse(JSON.stringify(currentFrame.cells));
-        const newCells = JSON.parse(JSON.stringify(originalCells));
-        for (let c = 0; c < COLS; c++) {
-            for (let r = 0; r < ROWS; r++) {
-                newCells[c][r].count = 0;
-                newCells[c][r].level = 0;
-            }
-        }
-        for (let c = 0; c < COLS; c++) {
-            for (let r = 0; r < ROWS; r++) {
-                let newC, newR;
-                if (wrap) {
-                    newC = (c + dx + COLS) % COLS;
-                    newR = (r + dy + ROWS) % ROWS;
-                } else {
-                    newC = c + dx;
-                    newR = r + dy;
-                }
-                if (wrap || (newC >= 0 && newC < COLS && newR >= 0 && newR < ROWS)) {
-                    newCells[newC][newR].count = originalCells[c][r].count;
-                    newCells[newC][newR].level = originalCells[c][r].level;
+        if (!currentFrame) return;
+
+        const originalLayers = JSON.parse(JSON.stringify(currentFrame.layers));
+        const numLayers = originalLayers.length;
+        const newLayers = JSON.parse(JSON.stringify(originalLayers));
+
+        // Clear the newLayers to be blank
+        for (let l = 0; l < numLayers; l++) {
+            for (let c = 0; c < COLS; c++) {
+                for (let r = 0; r < ROWS; r++) {
+                    newLayers[l].cells[c][r].count = 0;
+                    newLayers[l].cells[c][r].level = 0;
                 }
             }
         }
-        currentFrame.cells = newCells;
-        syncFrameAndCells(true);
-        updateFramesUI();
-        render();
+
+        for (let l = 0; l < numLayers; l++) {
+            for (let c = 0; c < COLS; c++) {
+                for (let r = 0; r < ROWS; r++) {
+                    let newL = l, newC = c, newR = r;
+
+                    if (dy !== 0) { // Vertical shift (within the same layer)
+                        newR = r + dy;
+                        if (wrap) {
+                            newR = (newR + ROWS) % ROWS;
+                        }
+                    } else if (dx !== 0) { // Horizontal shift (across layers)
+                        if (wrap) {
+                            const totalCols = COLS * numLayers;
+                            const globalCol = l * COLS + c;
+                            const newGlobalCol = (globalCol + dx + totalCols) % totalCols;
+                            newL = Math.floor(newGlobalCol / COLS);
+                            newC = newGlobalCol % COLS;
+                        } else {
+                            newC = c + dx;
+                            while (newC < 0) {
+                                newC += COLS;
+                                newL--;
+                            }
+                            while (newC >= COLS) {
+                                newC -= COLS;
+                                newL++;
+                            }
+                        }
+                    }
+                    
+                    // Check if the new position is valid and copy the cell data
+                    if (newL >= 0 && newL < numLayers && newR >= 0 && newR < ROWS) {
+                         newLayers[newL].cells[newC][newR] = originalLayers[l].cells[c][r];
+                    }
+                }
+            }
+        }
+
+        currentFrame.layers = newLayers;
+        rebuildDrawingAreasDOM();
+        updateFramesUI(); // Update thumbnails
         saveState();
     }
 
+
     function newFrame() {
         pushUndoState();
-        generateGridData();
-        state.frames.push(createFrame());
+        const currentFrame = state.frames[state.currentFrameIndex];
+        const numLayers = currentFrame ? currentFrame.layers.length : 1;
+        
+        const newLayers = [];
+        for (let i=0; i < numLayers; i++) {
+            newLayers.push({ cells: generateGridData() });
+        }
+        
+        state.frames.push({ layers: newLayers });
         state.currentFrameIndex = state.frames.length - 1;
+        rebuildDrawingAreasDOM();
         updateFramesUI();
         saveState();
     }
     function duplicateFrame() {
         if (state.frames.length === 0) return;
         pushUndoState();
-        const newFrame = createFrame();
+        const newFrame = JSON.parse(JSON.stringify(state.frames[state.currentFrameIndex]));
         state.frames.splice(state.currentFrameIndex + 1, 0, newFrame);
         state.currentFrameIndex++;
+        rebuildDrawingAreasDOM();
         updateFramesUI();
         saveState();
     }
@@ -1079,11 +1264,10 @@ document.addEventListener('DOMContentLoaded', () => {
         selectFrame(state.currentFrameIndex);
     }
     function selectFrame(index) {
-        if (index < 0 || index >= state.frames.length) return;
+        if (index < 0 || index >= state.frames.length || index === state.currentFrameIndex) return;
         state.currentFrameIndex = index;
-        syncFrameAndCells(true);
+        rebuildDrawingAreasDOM();
         updateUIFromState();
-        render();
     }
     function toggleAnimation() {
         state.animation.playing = !state.animation.playing;
@@ -1094,18 +1278,44 @@ document.addEventListener('DOMContentLoaded', () => {
     function mainLoop(timestamp) {
         const deltaTime = timestamp - lastTime;
         lastTime = timestamp;
+
         if (state.animation.playing && !state.game.active) {
             state.animation.lastFrameTime += deltaTime;
             const frameDuration = 1000 / state.animation.fps;
+
             if (state.animation.lastFrameTime >= frameDuration) {
-                state.animation.lastFrameTime = 0;
-                let nextIndex = state.currentFrameIndex + 1;
-                if (nextIndex >= state.frames.length) nextIndex = 0;
-                selectFrame(nextIndex);
+                state.animation.lastFrameTime %= frameDuration;
+                
+                // New animation logic: cycle through layers first, then frames.
+                let nextLayer = state.activeLayerIndex + 1;
+                let nextFrame = state.currentFrameIndex;
+                const numLayersInCurrentFrame = state.frames[nextFrame].layers.length;
+
+                if (nextLayer >= numLayersInCurrentFrame) {
+                    // Move to the next frame and reset the layer
+                    nextLayer = 0;
+                    nextFrame++;
+                    if (nextFrame >= state.frames.length) {
+                        // Loop back to the first frame
+                        nextFrame = 0;
+                    }
+                }
+
+                // Apply the changes to the state and UI
+                if (state.currentFrameIndex !== nextFrame) {
+                    // The frame changed, which requires a bigger UI update
+                    selectFrame(nextFrame);
+                }
+                // Always update the active layer, even if the frame changed (it resets to 0)
+                setActiveLayer(nextLayer);
             }
         }
-        if (state.game.active && !state.game.paused) { updateGame(deltaTime); }
-        render();
+
+        if (state.game.active && !state.game.paused) { 
+            updateGame(deltaTime);
+            renderAllLayers(); // Rerender game state
+        }
+        
         requestAnimationFrame(mainLoop);
     }
 
@@ -1122,6 +1332,7 @@ document.addEventListener('DOMContentLoaded', () => {
             initGame();
             state.animation.playing = false;
             updateUIFromState();
+            rebuildDrawingAreasDOM();
         }
     }
     function initGame() {
@@ -1159,10 +1370,13 @@ document.addEventListener('DOMContentLoaded', () => {
             if (hitEnemy) {
                 hitEnemy.hit = true; scoreToAdd += 10;
                 if (state.game.writeToHeatmap) {
-                    const cell = state.cells[Math.floor(hitEnemy.c)]?.[Math.floor(hitEnemy.r)];
-                    if (cell) {
-                        cell.count++;
-                        cell.level = calculateLevel(cell.count);
+                    const cells = getActiveCells();
+                    if(cells) {
+                        const cell = cells[Math.floor(hitEnemy.c)]?.[Math.floor(hitEnemy.r)];
+                        if (cell) {
+                            cell.count++;
+                            cell.level = calculateLevel(cell.count);
+                        }
                     }
                 }
                 return false;
@@ -1174,10 +1388,10 @@ document.addEventListener('DOMContentLoaded', () => {
             state.game.score += scoreToAdd;
             $('#game-score').textContent = state.game.score;
             updateTotalContributions();
-            syncFrameAndCells();
+            updateFramesUI();
         }
     }
-    function renderGame() {
+    function renderGame(ctx) {
         const getPixelPos = (r, c) => ({x: c * (cellSize + gap) + cellSize / 2, y: r * (cellSize + gap) + cellSize / 2});
         const pPos = getPixelPos(state.game.player.r, state.game.player.c);
         ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--accent-color');
