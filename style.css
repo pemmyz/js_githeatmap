@@ -171,7 +171,7 @@ label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.875rem
 .level-btn[data-level="3"] { background-color: var(--level-3-bg); }
 .level-btn[data-level="4"] { background-color: var(--level-4-bg); }
 
-.palette-editor, .thresholds, .io-buttons, .export-buttons, .frame-actions, .image-legend-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.palette-editor, .thresholds, .io-buttons, .export-buttons, .frame-actions, .image-legend-actions, .zoom-controls { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .image-legend-actions {
     flex-direction: column;
@@ -206,7 +206,12 @@ label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.875rem
 .frame-item canvas { border: 1px solid var(--border-color); }
 .frame-index { font-size: 0.8rem; color: var(--muted-color); width: 20px; }
 
-.timeline-controls { display: flex; align-items: center; gap: 12px; }
+.timeline-controls { 
+    display: flex; 
+    align-items: center; 
+    gap: 12px; 
+    flex-wrap: wrap; /* ADDED */
+}
 .timeline-controls #anim-play { width: 36px; height: 36px; padding: 6px; }
 .timeline-controls #anim-play svg { width: 100%; height: 100%; fill: currentColor; }
 #anim-fps-display {
@@ -222,7 +227,7 @@ label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.875rem
     gap: 12px;
     margin-top: 8px;
     align-items: center;
-    flex-wrap: wrap;
+    flex-wrap: wrap; /* ADDED */
 }
 .frame-move-buttons {
     display: flex;

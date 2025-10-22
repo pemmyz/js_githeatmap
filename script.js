@@ -2,6 +2,8 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- CONSTANTS & CONFIG ---
     const COLS = 53;
     const ROWS = 7;
+    const BASE_CELL_SIZE = 10;
+    const GAP_SIZE = 4;
     const PRESETS = {
         classic: ['#ebedf0', '#9be9a8', '#40c463', '#30a14e', '#216e39'],
         dark: ['#161b22', '#0e4429', '#006d32', '#26a641', '#39d353'],
@@ -31,6 +33,10 @@ document.addEventListener('DOMContentLoaded', () => {
             mode: 'level',
             level: 1,
             addN: 1,
+        },
+        view: {
+            zoom: 1.0,
+            fitToWidth: false,
         },
         frames: [],
         currentFrameIndex: 0,
@@ -106,10 +112,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (isDarkMode) {
             // --- DARK MODE LOGIC ---
-            // The border is a slightly darker version of the cell's own color to give it definition.
-            // For level 0, the border is the same color as the fill, making it "borderless".
             borderColor = level === 0 ? mainColor : darkenColor(mainColor, 20);
-            // The corners are always the page background color to create the "chipped" look.
             highlightColor = getComputedStyle(document.body).getPropertyValue('--bg-color');
         } else {
             // --- LIGHT MODE LOGIC (Unchanged) ---
@@ -122,16 +125,11 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        // 1. Fill the entire cell with its main color.
         context.fillStyle = mainColor;
         context.fillRect(x, y, size, size);
-
-        // 2. Draw the 1px border around the cell.
         context.strokeStyle = borderColor;
         context.lineWidth = 1;
         context.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);
-        
-        // 3. "Chip away" the corners by drawing 1x1 pixels with the highlight color on top.
         context.fillStyle = highlightColor;
         context.fillRect(x, y, 1, 1);
         context.fillRect(x + size - 1, y, 1, 1);
@@ -254,11 +252,30 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- RENDERING ---
     let cellSize, gap;
     function resizeCanvas() {
+        const container = $('#heatmap-container');
         const dpr = window.devicePixelRatio || 1;
-        cellSize = 10;
-        gap = 4;
+        
+        gap = GAP_SIZE;
+
+        if (state.view.fitToWidth) {
+            // CORRECTED LOGIC:
+            // Get computed style to find the actual padding of the container.
+            const style = getComputedStyle(container);
+            const paddingX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
+            
+            // The available width for the canvas is the container's clientWidth minus its horizontal padding.
+            const availableWidth = container.clientWidth - paddingX;
+
+            // Calculate cell size based on the CORRECT available width.
+            const newCellSize = Math.floor(((availableWidth + gap) / COLS) - gap);
+            cellSize = Math.max(2, newCellSize);
+        } else {
+            cellSize = BASE_CELL_SIZE * state.view.zoom;
+        }
+
         const w = (cellSize + gap) * COLS - gap;
         const h = (cellSize + gap) * ROWS - gap;
+
         canvas.width = w * dpr;
         canvas.height = h * dpr;
         canvas.style.width = `${w}px`;
@@ -496,6 +513,32 @@ document.addEventListener('DOMContentLoaded', () => {
         $('#import-csv').addEventListener('click', () => openFilePicker('.csv'));
         $('#export-csv').addEventListener('click', exportCSV);
         $('#file-input').addEventListener('change', handleFileLoad);
+        
+        // Zoom listeners
+        $('#zoom-100').addEventListener('click', () => {
+            state.view.fitToWidth = false;
+            state.view.zoom = 1.0;
+            resizeCanvas();
+            saveState();
+        });
+        $('#zoom-150').addEventListener('click', () => {
+            state.view.fitToWidth = false;
+            state.view.zoom = 1.5;
+            resizeCanvas();
+            saveState();
+        });
+        $('#zoom-200').addEventListener('click', () => {
+            state.view.fitToWidth = false;
+            state.view.zoom = 2.0;
+            resizeCanvas();
+            saveState();
+        });
+        $('#zoom-fit').addEventListener('click', () => {
+            state.view.fitToWidth = true;
+            resizeCanvas();
+            saveState();
+        });
+
         $('#load-image-legend').addEventListener('click', () => openFilePicker('image/*'));
         $('#reset-all-settings').addEventListener('click', resetAllSettings);
         $('#image-opacity').addEventListener('input', e => { state.imageLegend.opacity = parseFloat(e.target.value); render(); });
@@ -606,9 +649,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function resetAllSettings() {
         if (confirm("Are you sure you want to reset all settings to their default values? This will clear your current project and cannot be undone.")) {
-            // Remove the saved state from local storage
             localStorage.removeItem('heatmapEditorState');
-            // Force a page reload to start fresh
             location.reload();
         }
     }
@@ -788,21 +829,16 @@ document.addEventListener('DOMContentLoaded', () => {
             warningEl.textContent = `Processing ${state.frames.length} frames...`;
             warningEl.classList.remove('hidden');
             exportButtons.forEach(b => b.disabled = true);
-            
             const writer = new WebPWriter();
-            
             for (const frame of state.frames) {
                 const frameCanvas = createFrameCanvas(frame.cells, includeLabels);
                 writer.addFrame(frameCanvas.toDataURL('image/webp', {quality: 0.8}), { duration: frameDuration });
             }
-            
             warningEl.textContent = "Encoding WEBP... Please wait.";
             const webpBlob = await writer.complete({ loop: 0 }); 
-
             const url = URL.createObjectURL(webpBlob);
             downloadFile(url, 'animation.webp');
             URL.revokeObjectURL(url);
-
         } catch (error) {
             console.error("Failed to export WEBP:", error);
             warningEl.textContent = "Error exporting WEBP. See console for details.";
@@ -818,62 +854,35 @@ document.addEventListener('DOMContentLoaded', () => {
         const exportButtons = $$('.export-buttons button, #export-anim-gif');
         const includeLabels = $('#export-include-labels').checked;
         const frameDelay = 1000 / state.animation.fps;
-
         try {
-            console.log("Starting GIF export...");
             warningEl.textContent = `Processing GIF... This may take a while.`;
             warningEl.classList.remove('hidden');
             exportButtons.forEach(b => b.disabled = true);
-            
-            const gif = new GIF({ 
-                workers: 2, 
-                quality: 10, 
-                workerScript: 'gif.worker.js' 
-            });
-
+            const gif = new GIF({ workers: 2, quality: 10, workerScript: 'gif.worker.js' });
             gif.on('progress', function(p) {
                 const progressPercent = Math.round(p * 100);
                 warningEl.textContent = `Encoding GIF... ${progressPercent}%`;
-                console.log(`GIF encoding progress: ${progressPercent}%`);
             });
-
-            console.log(`Adding ${state.frames.length} frames to GIF object...`);
-            for (const [index, frame] of state.frames.entries()) {
+            for (const frame of state.frames) {
                 const frameCanvas = createFrameCanvas(frame.cells, includeLabels);
                 gif.addFrame(frameCanvas, { delay: frameDelay });
-                console.log(`Added frame ${index + 1}/${state.frames.length}`);
             }
-            
-            warningEl.textContent = "Starting GIF render process...";
-            console.log("All frames added. Calling gif.render()...");
-
             await new Promise((resolve, reject) => {
                 gif.on('finished', (blob) => {
-                    console.log("GIF rendering finished successfully.");
                     try {
                         const url = URL.createObjectURL(blob);
                         downloadFile(url, 'animation.gif');
                         URL.revokeObjectURL(url);
                         resolve();
-                    } catch (e) {
-                        console.error("Error creating or downloading GIF blob.", e);
-                        reject(e);
-                    }
+                    } catch (e) { reject(e); }
                 });
-
-                gif.on('abort', () => {
-                    console.error("GIF encoding was aborted.");
-                    reject(new Error("GIF encoding aborted."));
-                });
-
+                gif.on('abort', () => reject(new Error("GIF encoding aborted.")));
                 gif.render();
             });
-
         } catch (error) {
             console.error("Failed to export GIF:", error);
             warningEl.textContent = "Error exporting GIF. Check console for details.";
         } finally {
-            console.log("GIF export process finished or failed. Cleaning up.");
             warningEl.classList.add('hidden');
             exportButtons.forEach(b => b.disabled = false);
         }
@@ -1008,48 +1017,35 @@ document.addEventListener('DOMContentLoaded', () => {
     function shiftFrame(dx, dy) {
         pushUndoState();
         const wrap = $('#frame-shift-wrap').checked;
-        
         const currentFrame = state.frames[state.currentFrameIndex];
         const originalCells = JSON.parse(JSON.stringify(currentFrame.cells));
         const newCells = JSON.parse(JSON.stringify(originalCells));
-        
-        // Blank out the new grid first to clear old positions
         for (let c = 0; c < COLS; c++) {
             for (let r = 0; r < ROWS; r++) {
                 newCells[c][r].count = 0;
                 newCells[c][r].level = 0;
             }
         }
-        
-        // Copy each cell from its original position to the new position
         for (let c = 0; c < COLS; c++) {
             for (let r = 0; r < ROWS; r++) {
                 let newC, newR;
-
                 if (wrap) {
-                    // Calculate wrapped coordinates using modulo.
-                    // Adding COLS/ROWS before the modulo handles negative results correctly.
                     newC = (c + dx + COLS) % COLS;
                     newR = (r + dy + ROWS) % ROWS;
                 } else {
-                    // Calculate normal, non-wrapping coordinates
                     newC = c + dx;
                     newR = r + dy;
                 }
-
-                // If wrapping, the destination is always valid.
-                // If not wrapping, check if the destination is within the grid bounds.
                 if (wrap || (newC >= 0 && newC < COLS && newR >= 0 && newR < ROWS)) {
                     newCells[newC][newR].count = originalCells[c][r].count;
                     newCells[newC][newR].level = originalCells[c][r].level;
                 }
             }
         }
-        
         currentFrame.cells = newCells;
-        syncFrameAndCells(true); // Update main canvas from the modified frame data
-        updateFramesUI();      // Redraw thumbnails to reflect the change
-        render();              // Redraw the main canvas
+        syncFrameAndCells(true);
+        updateFramesUI();
+        render();
         saveState();
     }
 
