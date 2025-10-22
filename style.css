@@ -97,7 +97,7 @@ aside {
     gap: 24px; /* Space between layers */
 }
 
-/* --- NEW: Styles for individual drawing areas (layers) --- */
+/* --- Styles for individual drawing areas (layers) --- */
 .heatmap-instance {
     position: relative;
     border: 2px solid transparent;
@@ -141,8 +141,6 @@ aside {
     color: white;
     border-color: var(--danger-color);
 }
-/* --- END NEW --- */
-
 
 .heatmap-canvas { /* This is now a class for multiple canvases */
     cursor: crosshair;
@@ -227,7 +225,7 @@ label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.875rem
     display: flex;
     flex-direction: column;
     gap: 8px;
-    max-height: 200px; /* Adjusted height */
+    max-height: 200px;
     overflow-y: auto;
     border: 1px solid var(--border-color);
     padding: 8px;
@@ -301,6 +299,56 @@ label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.875rem
 }
 .game-hud-item { font-weight: bold; }
 .game-controls, .game-options { display: flex; align-items: center; gap: 12px; }
+
+/* --- NEW: Modal Styles --- */
+#modal-backdrop {
+    position: fixed;
+    top: 0; left: 0;
+    width: 100vw;
+    height: 100vh;
+    background-color: rgba(0, 0, 0, 0.5);
+    z-index: 100;
+}
+
+#layer-data-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%;
+    max-width: 600px;
+    max-height: 80vh;
+    background-color: var(--panel-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 16px;
+    z-index: 101;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+}
+
+#layer-data-modal p { font-size: 0.875rem; color: var(--muted-color); }
+
+#layer-data-textarea {
+    width: 100%;
+    flex-grow: 1;
+    resize: none;
+    font-family: monospace;
+    font-size: 0.8rem;
+    background-color: var(--bg-color);
+    color: var(--fg-color);
+    border: 1px solid var(--border-color);
+    border-radius: 6px;
+    padding: 8px;
+}
+
+.modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+}
 
 .hidden { display: none !important; }
 .dragging { opacity: 0.5; }

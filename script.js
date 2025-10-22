@@ -17,6 +17,13 @@ document.addEventListener('DOMContentLoaded', () => {
     const totalContributionsEl = $('#total-contributions');
     const themeToggle = $('#theme-toggle');
     const gameModeToggle = $('#game-mode-toggle');
+    const modalBackdrop = $('#modal-backdrop');
+    const layerDataModal = $('#layer-data-modal');
+    const layerDataBtn = $('#layer-data-btn');
+    const layerDataTextarea = $('#layer-data-textarea');
+    const layerDataApplyBtn = $('#layer-data-apply');
+    const layerDataCloseBtn = $('#layer-data-close');
+
 
     // --- DYNAMIC INSTANCES ---
     let canvasInstances = [];
@@ -431,10 +438,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
             let cells;
             if (state.animation.stableMonths) {
-                // Always use the first frame/layer's cells for ALL label containers
                 cells = state.frames[0]?.layers[0]?.cells;
             } else {
-                // Use the current frame/layer's cells for this specific label container
                 cells = state.frames[state.currentFrameIndex]?.layers[index]?.cells;
             }
 
@@ -517,7 +522,7 @@ document.addEventListener('DOMContentLoaded', () => {
         }
         selection.active = false;
         updateTotalContributions();
-        updateFramesUI(); // This updates the thumbnail
+        updateFramesUI();
         saveState();
         renderAllLayers();
     }
@@ -608,9 +613,26 @@ document.addEventListener('DOMContentLoaded', () => {
         });
         
         updateTotalContributions();
-        updateFramesUI(); // Update thumbnails to reflect the new active layer
         renderAllLayers();
         saveState();
+    }
+
+    // --- MODAL LOGIC ---
+    function openLayerDataModal() {
+        const activeCells = getActiveCells();
+        if (!activeCells) {
+            alert("No active layer to export.");
+            return;
+        }
+        layerDataTextarea.value = JSON.stringify(activeCells, null, 2);
+        modalBackdrop.classList.remove('hidden');
+        layerDataModal.classList.remove('hidden');
+        layerDataTextarea.select();
+    }
+
+    function closeLayerDataModal() {
+        modalBackdrop.classList.add('hidden');
+        layerDataModal.classList.add('hidden');
     }
 
     // --- EVENT LISTENERS ---
@@ -620,6 +642,34 @@ document.addEventListener('DOMContentLoaded', () => {
         gameModeToggle.addEventListener('click', () => toggleGameMode());
         
         $('#add-layer-btn').addEventListener('click', addLayer);
+
+        layerDataBtn.addEventListener('click', openLayerDataModal);
+        layerDataCloseBtn.addEventListener('click', closeLayerDataModal);
+        modalBackdrop.addEventListener('click', closeLayerDataModal);
+        layerDataApplyBtn.addEventListener('click', () => {
+            const dataToLoad = layerDataTextarea.value;
+            try {
+                const parsedData = JSON.parse(dataToLoad);
+
+                // Basic validation
+                if (!Array.isArray(parsedData) || parsedData.length !== COLS || !Array.isArray(parsedData[0]) || parsedData[0].length !== ROWS) {
+                    throw new Error("Data structure is invalid. Expected a 53x7 grid.");
+                }
+                
+                pushUndoState();
+                const activeCells = getActiveCells();
+                if (activeCells) {
+                    state.frames[state.currentFrameIndex].layers[state.activeLayerIndex].cells = parsedData;
+                }
+                rebuildDrawingAreasDOM();
+                updateFramesUI();
+                saveState();
+                closeLayerDataModal();
+
+            } catch (error) {
+                alert("Failed to load layer data. Please ensure it is valid JSON with the correct 53x7 structure.\n\n" + error.message);
+            }
+        });
 
         $('.toolbar').addEventListener('click', e => {
             const btn = e.target.closest('.tool-btn');
@@ -700,11 +750,12 @@ document.addEventListener('DOMContentLoaded', () => {
         $('#anim-onion-skin').addEventListener('change', e => state.animation.onionSkin = e.target.checked);
         $('#anim-stable-months').addEventListener('change', e => {
             state.animation.stableMonths = e.target.checked;
-            renderAllMonthLabels(); // Re-render labels immediately
+            renderAllMonthLabels();
             saveState();
         });
         $('#frame-new').addEventListener('click', newFrame);
         $('#frame-duplicate').addEventListener('click', duplicateFrame);
+        $('#frame-add-layer-as-frame').addEventListener('click', addActiveLayerAsNewFrame);
         $('#frame-delete').addEventListener('click', deleteFrame);
         $('#frame-move-up').addEventListener('click', () => shiftFrame(0, -1));
         $('#frame-move-down').addEventListener('click', () => shiftFrame(0, 1));
@@ -755,7 +806,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function handleKeyDown(e) {
-        if (document.activeElement.tagName === 'INPUT') return;
+        if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
         const keyMap = {
             'p': () => state.currentTool = 'pencil', 'r': () => state.currentTool = 'rect',
             'e': () => state.currentTool = 'eraser', 'i': () => state.currentTool = 'picker',
@@ -863,7 +914,7 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         recalculateAllLevels(cells);
-        updateFramesUI(); // update thumbnail
+        updateFramesUI();
         updateUIFromState();
         renderAllLayers();
         alert(`Imported ${changed} data points from CSV.`);
@@ -963,7 +1014,6 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadFile(dataURL, `frame-${state.currentFrameIndex}-layer-${state.activeLayerIndex}.${ext}`);
     }
 
-    // --- MODIFIED with Stable Months logic ---
     function exportAnimation() {
         if (state.frames.length === 0) return;
         const warningEl = $('#export-anim-warning');
@@ -1008,7 +1058,6 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadNext();
     }
 
-    // --- MODIFIED with Stable Months logic ---
     async function exportAnimationWEBP() {
         if (state.frames.length < 1) { return alert("Animation requires at least 1 frame."); }
         const warningEl = $('#export-anim-warning');
@@ -1055,7 +1104,6 @@ document.addEventListener('DOMContentLoaded', () => {
         }
     }
 
-    // --- MODIFIED with Stable Months logic ---
     async function exportAnimationGIF() {
         if (state.frames.length < 1) { return alert("Animation requires at least 1 frame."); }
         const warningEl = $('#export-anim-warning');
@@ -1180,11 +1228,11 @@ document.addEventListener('DOMContentLoaded', () => {
             thumbCanvas.width = 106;
             thumbCanvas.height = 14;
             
-            // The thumbnail should be of the active layer for that frame
-            const activeLayerCells = frame.layers[state.activeLayerIndex]?.cells;
-            if (activeLayerCells) {
-                drawThumbnail(thumbCanvas, activeLayerCells);
+            const topLayerCells = frame.layers[0]?.cells;
+            if (topLayerCells) {
+                drawThumbnail(thumbCanvas, topLayerCells);
             }
+
             const indexEl = document.createElement('span');
             indexEl.className = 'frame-index';
             indexEl.textContent = index;
@@ -1221,7 +1269,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 state.currentFrameIndex++;
             }
             updateFramesUI();
-            rebuildDrawingAreasDOM(); // To show correct frame data
+            rebuildDrawingAreasDOM();
             saveState();
         }
     }
@@ -1291,7 +1339,6 @@ document.addEventListener('DOMContentLoaded', () => {
                         }
                     }
                     
-                    // Check if the new position is valid and copy the cell data
                     if (newL >= 0 && newL < numLayers && newR >= 0 && newR < ROWS) {
                          newLayers[newL].cells[newC][newR] = originalLayers[l].cells[c][r];
                     }
@@ -1301,10 +1348,36 @@ document.addEventListener('DOMContentLoaded', () => {
 
         currentFrame.layers = newLayers;
         rebuildDrawingAreasDOM();
-        updateFramesUI(); // Update thumbnails
+        updateFramesUI();
         saveState();
     }
 
+
+    function addActiveLayerAsNewFrame() {
+        if (state.frames.length === 0) return;
+        pushUndoState();
+
+        const sourceCells = getActiveCells();
+        if (!sourceCells) return;
+
+        const numLayers = state.frames[0].layers.length;
+        const newLayers = [];
+
+        newLayers.push({ cells: JSON.parse(JSON.stringify(sourceCells)) });
+
+        for (let i = 1; i < numLayers; i++) {
+            newLayers.push({ cells: generateGridData() });
+        }
+        
+        const newFrame = { layers: newLayers };
+
+        state.frames.splice(state.currentFrameIndex + 1, 0, newFrame);
+        state.currentFrameIndex++;
+        
+        rebuildDrawingAreasDOM();
+        updateFramesUI();
+        saveState();
+    }
 
     function newFrame() {
         pushUndoState();
@@ -1364,34 +1437,28 @@ document.addEventListener('DOMContentLoaded', () => {
             if (state.animation.lastFrameTime >= frameDuration) {
                 state.animation.lastFrameTime %= frameDuration;
                 
-                // New animation logic: cycle through layers first, then frames.
                 let nextLayer = state.activeLayerIndex + 1;
                 let nextFrame = state.currentFrameIndex;
                 const numLayersInCurrentFrame = state.frames[nextFrame].layers.length;
 
                 if (nextLayer >= numLayersInCurrentFrame) {
-                    // Move to the next frame and reset the layer
                     nextLayer = 0;
                     nextFrame++;
                     if (nextFrame >= state.frames.length) {
-                        // Loop back to the first frame
                         nextFrame = 0;
                     }
                 }
 
-                // Apply the changes to the state and UI
                 if (state.currentFrameIndex !== nextFrame) {
-                    // The frame changed, which requires a bigger UI update
                     selectFrame(nextFrame);
                 }
-                // Always update the active layer, even if the frame changed (it resets to 0)
                 setActiveLayer(nextLayer);
             }
         }
 
         if (state.game.active && !state.game.paused) { 
             updateGame(deltaTime);
-            renderAllLayers(); // Rerender game state
+            renderAllLayers();
         }
         
         requestAnimationFrame(mainLoop);
@@ -1400,6 +1467,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const keysPressed = {};
     document.addEventListener('keydown', (e) => keysPressed[e.key] = true);
     document.addEventListener('keyup', (e) => keysPressed[e.key] = false);
+
     function toggleGameMode() {
         state.game.active = !state.game.active;
         $('#main-content').classList.toggle('game-active', state.game.active);

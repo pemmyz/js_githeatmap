@@ -138,7 +138,6 @@
                     <label title="Show previous frame as an overlay (Onion Skin)">
                         <input type="checkbox" id="anim-onion-skin"> Onion Skin
                     </label>
-                    <!-- NEW CHECKBOX HERE -->
                     <label title="Keep month labels fixed to the first frame during animation">
                         <input type="checkbox" id="anim-stable-months"> Stable Months
                     </label>
@@ -156,6 +155,7 @@
                 <div class="frame-actions">
                     <button id="frame-new" title="New Blank Frame">+</button>
                     <button id="frame-duplicate" title="Duplicate Selected Frame">📄</button>
+                    <button id="frame-add-layer-as-frame" title="Add current layer as next frame">+🖼️</button>
                     <button id="frame-delete" title="Delete Selected Frame">🗑️</button>
                 </div>
                 <div class="frame-move-controls">
@@ -169,6 +169,11 @@
                         <input type="checkbox" id="frame-shift-wrap"> Wrap
                     </label>
                 </div>
+            </section>
+            <!-- NEW SECTION -->
+            <section class="panel-section">
+                <h3>Layer Data</h3>
+                <button id="layer-data-btn">Import / Export Layer</button>
             </section>
             <section class="panel-section">
                 <h3>Export Animation</h3>
@@ -190,6 +195,18 @@
     <footer>
         <p>Shortcuts: [1-5] Levels | [P] Pencil | [R] Rect | [E] Eraser | [I] Picker | [A] Add/Set | [G] Grid | [T] Game | [V] Theme | [Ctrl+Z] Undo | [Ctrl+Y] Redo</p>
     </footer>
+
+    <!-- NEW MODAL STRUCTURE -->
+    <div id="modal-backdrop" class="hidden"></div>
+    <div id="layer-data-modal" class="panel-section hidden">
+        <h3>Layer Data (JSON)</h3>
+        <p>Copy this text to save the layer, or paste valid layer data here and click "Apply".</p>
+        <textarea id="layer-data-textarea"></textarea>
+        <div class="modal-actions">
+            <button id="layer-data-apply">Apply to Current Layer</button>
+            <button id="layer-data-close">Close</button>
+        </div>
+    </div>
 
     <!-- These scripts must be in your project folder -->
     <script src="gif.js"></script>
