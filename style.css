@@ -23,14 +23,14 @@ body.dark-mode {
     --fg-color: #c9d1d9;
     --border-color: #30363d;
     --muted-color: #8b949e;
-    --panel-bg: #161b22;
+    --panel-bg: #0d1117;
     --button-bg: #21262d;
     --button-hover-bg: #30363d;
     --button-border: #30363d;
     --accent-color: #58a6ff;
     --focus-ring-color: #58a6ff80;
     --danger-color: #f85149;
-    --level-0-bg: #161b22;
+    --level-0-bg: #1C222C;
     --level-1-bg: #0e4429;
     --level-2-bg: #006d32;
     --level-3-bg: #26a641;
