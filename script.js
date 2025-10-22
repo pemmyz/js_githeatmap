@@ -27,7 +27,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const defaultState = {
         cells: [],
         thresholds: [1, 4, 8, 13],
-        palette: [...PRESETS.classic],
+        palette: [...PRESETS.dark], 
         currentTool: 'pencil',
         brush: {
             mode: 'level',
@@ -76,7 +76,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setupEventListeners();
         resizeCanvas();
         updateUIFromState();
-        applyTheme(localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light'));
+        applyTheme(localStorage.getItem('theme') || 'dark');
         requestAnimationFrame(mainLoop);
     }
 
@@ -108,14 +108,12 @@ document.addEventListener('DOMContentLoaded', () => {
     function drawCrispCell(context, x, y, size, mainColor, level) {
         const isDarkMode = document.body.classList.contains('dark-mode');
         let borderColor;
-        let highlightColor; // This is the color for the corners
+        let highlightColor;
 
         if (isDarkMode) {
-            // --- DARK MODE LOGIC ---
             borderColor = level === 0 ? mainColor : darkenColor(mainColor, 20);
             highlightColor = getComputedStyle(document.body).getPropertyValue('--bg-color');
         } else {
-            // --- LIGHT MODE LOGIC (Unchanged) ---
             borderColor = darkenColor(mainColor, 20);
             if (level === 0) {
                 highlightColor = lightenColor(mainColor, 30);
@@ -258,15 +256,9 @@ document.addEventListener('DOMContentLoaded', () => {
         gap = GAP_SIZE;
 
         if (state.view.fitToWidth) {
-            // CORRECTED LOGIC:
-            // Get computed style to find the actual padding of the container.
             const style = getComputedStyle(container);
             const paddingX = parseFloat(style.paddingLeft) + parseFloat(style.paddingRight);
-            
-            // The available width for the canvas is the container's clientWidth minus its horizontal padding.
             const availableWidth = container.clientWidth - paddingX;
-
-            // Calculate cell size based on the CORRECT available width.
             const newCellSize = Math.floor(((availableWidth + gap) / COLS) - gap);
             cellSize = Math.max(2, newCellSize);
         } else {
@@ -514,7 +506,6 @@ document.addEventListener('DOMContentLoaded', () => {
         $('#export-csv').addEventListener('click', exportCSV);
         $('#file-input').addEventListener('change', handleFileLoad);
         
-        // Zoom listeners
         $('#zoom-100').addEventListener('click', () => {
             state.view.fitToWidth = false;
             state.view.zoom = 1.0;
@@ -615,6 +606,7 @@ document.addEventListener('DOMContentLoaded', () => {
             },
             'g': () => { state.showGrid = !state.showGrid; render(); },
             't': () => toggleGameMode(),
+            'v': toggleTheme,
         };
         if (keyMap[e.key]) { e.preventDefault(); keyMap[e.key](); updateUIFromState(); }
         if (e.ctrlKey || e.metaKey) {
@@ -634,7 +626,7 @@ document.addEventListener('DOMContentLoaded', () => {
         if (theme === 'dark') {
             state.palette = [...PRESETS.dark];
             $('#palette-preset').value = 'dark';
-        } else { // theme is 'light'
+        } else {
             state.palette = [...PRESETS.classic];
             $('#palette-preset').value = 'classic';
         }
@@ -650,6 +642,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function resetAllSettings() {
         if (confirm("Are you sure you want to reset all settings to their default values? This will clear your current project and cannot be undone.")) {
             localStorage.removeItem('heatmapEditorState');
+            localStorage.removeItem('theme');
             location.reload();
         }
     }
@@ -722,10 +715,16 @@ document.addEventListener('DOMContentLoaded', () => {
         downloadFile(dataStr, "heatmap.csv");
     }
 
+    // --- EXPORT RENDERING LOGIC ---
+    // NOTE: These functions intentionally use the BASE constants to ensure exports are always at 100% scale.
+
     function drawFrameWithLabels(tempCtx, cells) {
         const PADDING = 30;
-        const gridW = (cellSize + gap) * COLS - gap;
-        const gridH = (cellSize + gap) * ROWS - gap;
+        const exportCellSize = BASE_CELL_SIZE;
+        const exportGap = GAP_SIZE;
+
+        const gridW = (exportCellSize + exportGap) * COLS - exportGap;
+        const gridH = (exportCellSize + exportGap) * ROWS - exportGap;
         tempCtx.canvas.width = gridW + PADDING;
         tempCtx.canvas.height = gridH + PADDING;
         tempCtx.imageSmoothingEnabled = false;
@@ -737,7 +736,7 @@ document.addEventListener('DOMContentLoaded', () => {
         tempCtx.textBaseline = 'middle';
         const dayLabels = ["", "Mon", "", "Wed", "", "Fri", ""];
         dayLabels.forEach((label, i) => {
-            const y = PADDING + i * (cellSize + gap) + cellSize / 2;
+            const y = PADDING + i * (exportCellSize + exportGap) + exportCellSize / 2;
             tempCtx.fillText(label, 0, y);
         });
         const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
@@ -748,7 +747,7 @@ document.addEventListener('DOMContentLoaded', () => {
             const date = new Date(cell.dateISO + 'T00:00:00');
             const month = date.getUTCMonth();
             if (month !== lastMonth && date.getUTCDate() < 8) {
-                tempCtx.fillText(months[month], PADDING + c * (cellSize + gap), 15);
+                tempCtx.fillText(months[month], PADDING + c * (exportCellSize + exportGap), 15);
                 lastMonth = month;
             }
         }
@@ -756,10 +755,10 @@ document.addEventListener('DOMContentLoaded', () => {
             for (let r = 0; r < ROWS; r++) {
                 const cell = cells[c][r];
                 if (!cell) continue;
-                const x = PADDING + c * (cellSize + gap);
-                const y = PADDING + r * (cellSize + gap);
+                const x = PADDING + c * (exportCellSize + exportGap);
+                const y = PADDING + r * (exportCellSize + exportGap);
                 const mainColor = state.palette[cell.level];
-                drawCrispCell(tempCtx, x, y, cellSize, mainColor, cell.level);
+                drawCrispCell(tempCtx, x, y, exportCellSize, mainColor, cell.level);
             }
         }
     }
@@ -767,11 +766,15 @@ document.addEventListener('DOMContentLoaded', () => {
     function createFrameCanvas(cells, includeLabels) {
         const tempCanvas = document.createElement('canvas');
         const tempCtx = tempCanvas.getContext('2d');
+        
         if (includeLabels) {
             drawFrameWithLabels(tempCtx, cells);
         } else {
-            tempCanvas.width = (cellSize + gap) * COLS - gap;
-            tempCanvas.height = (cellSize + gap) * ROWS - gap;
+            const exportCellSize = BASE_CELL_SIZE;
+            const exportGap = GAP_SIZE;
+
+            tempCanvas.width = (exportCellSize + exportGap) * COLS - exportGap;
+            tempCanvas.height = (exportCellSize + exportGap) * ROWS - exportGap;
             tempCtx.imageSmoothingEnabled = false;
             tempCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg-color');
             tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
@@ -779,10 +782,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 for (let r = 0; r < ROWS; r++) {
                     const cell = cells[c][r];
                     if (!cell) continue;
-                    const x = c * (cellSize + gap);
-                    const y = r * (cellSize + gap);
+                    const x = c * (exportCellSize + exportGap);
+                    const y = r * (exportCellSize + exportGap);
                     const mainColor = state.palette[cell.level];
-                    drawCrispCell(tempCtx, x, y, cellSize, mainColor, cell.level);
+                    drawCrispCell(tempCtx, x, y, exportCellSize, mainColor, cell.level);
                 }
             }
         }
