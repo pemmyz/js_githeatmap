@@ -175,19 +175,21 @@
                     </div>
                 </div>
             </section>
-            <!-- NEW SECTION -->
             <section class="panel-section">
                 <h3>Layer Data</h3>
                 <button id="layer-data-btn">Import / Export Layer</button>
             </section>
             <section class="panel-section">
                 <h3>Export Animation</h3>
-                <div class="export-buttons">
-                    <button id="export-frame-png">Current as PNG</button>
-                    <button id="export-frame-webp">Current as WEBP</button>
-                    <button id="export-anim">Animation (PNGs)</button>
-                    <button id="export-anim-webp">Animation (WEBP)</button>
-                    <button id="export-anim-gif">Animation (GIF)</button>
+                <div class="export-controls">
+                    <select id="export-format-select">
+                        <option value="png-current">Current as PNG</option>
+                        <option value="webp-current">Current as WEBP</option>
+                        <option value="png-anim">Animation (PNGs)</option>
+                        <option value="webp-anim">Animation (WEBP)</option>
+                        <option value="gif-anim">Animation (GIF)</option>
+                    </select>
+                    <button id="export-btn">Export</button>
                 </div>
                 <div class="export-options">
                     <label><input type="checkbox" id="export-include-labels"> Include Labels</label>
@@ -201,7 +203,6 @@
         <p>Shortcuts: [1-5] Levels | [P] Pencil | [R] Rect | [E] Eraser | [I] Picker | [A] Add/Set | [G] Grid | [T] Game | [V] Theme | [Ctrl+Z] Undo | [Ctrl+Y] Redo</p>
     </footer>
 
-    <!-- NEW MODAL STRUCTURE -->
     <div id="modal-backdrop" class="hidden"></div>
     <div id="layer-data-modal" class="panel-section hidden">
         <h3>Layer Data (JSON)</h3>
@@ -213,7 +214,6 @@
         </div>
     </div>
 
-    <!-- These scripts must be in your project folder -->
     <script src="gif.js"></script>
     <script src="webp.js"></script>
     <script src="script.js"></script>

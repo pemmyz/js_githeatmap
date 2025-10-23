@@ -761,11 +761,28 @@ document.addEventListener('DOMContentLoaded', () => {
         $('#frame-move-down').addEventListener('click', () => shiftFrame(0, 1));
         $('#frame-move-left').addEventListener('click', () => shiftFrame(-1, 0));
         $('#frame-move-right').addEventListener('click', () => shiftFrame(1, 0));
-        $('#export-frame-png').addEventListener('click', () => exportFrame('image/png'));
-        $('#export-frame-webp').addEventListener('click', () => exportFrame('image/webp'));
-        $('#export-anim').addEventListener('click', exportAnimation);
-        $('#export-anim-webp').addEventListener('click', exportAnimationWEBP);
-        $('#export-anim-gif').addEventListener('click', exportAnimationGIF);
+        
+        $('#export-btn').addEventListener('click', () => {
+            const selectedFormat = $('#export-format-select').value;
+            switch (selectedFormat) {
+                case 'png-current':
+                    exportFrame('image/png');
+                    break;
+                case 'webp-current':
+                    exportFrame('image/webp');
+                    break;
+                case 'png-anim':
+                    exportAnimation();
+                    break;
+                case 'webp-anim':
+                    exportAnimationWEBP();
+                    break;
+                case 'gif-anim':
+                    exportAnimationGIF();
+                    break;
+            }
+        });
+        
         $('#game-difficulty').addEventListener('input', e => state.game.difficulty = parseInt(e.target.value));
         $('#game-pause').addEventListener('click', () => { state.game.paused = !state.game.paused; });
         $('#game-reset').addEventListener('click', initGame);
@@ -1061,7 +1078,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function exportAnimationWEBP() {
         if (state.frames.length < 1) { return alert("Animation requires at least 1 frame."); }
         const warningEl = $('#export-anim-warning');
-        const exportButtons = $$('.export-buttons button, #export-anim-webp');
+        const exportButtons = $$('#export-btn');
         const includeLabels = $('#export-include-labels').checked;
         const frameDuration = 1000 / state.animation.fps;
         try {
@@ -1107,7 +1124,7 @@ document.addEventListener('DOMContentLoaded', () => {
     async function exportAnimationGIF() {
         if (state.frames.length < 1) { return alert("Animation requires at least 1 frame."); }
         const warningEl = $('#export-anim-warning');
-        const exportButtons = $$('.export-buttons button, #export-anim-gif');
+        const exportButtons = $$('#export-btn');
         const includeLabels = $('#export-include-labels').checked;
         const frameDelay = 1000 / state.animation.fps;
         try {
@@ -1372,7 +1389,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 state.frames[state.currentFrameIndex].layers = shiftedLayers;
             }
         } else {
-            // Standard single shift (1 pixel for horizontal, 1 row for vertical)
+            // Standard single pixel shift
             const shiftedLayers = performPixelShift(sourceFrame.layers, dx, dy, wrap);
             state.frames[state.currentFrameIndex].layers = shiftedLayers;
         }

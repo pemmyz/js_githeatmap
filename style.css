@@ -213,7 +213,7 @@ label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.875rem
 .level-btn[data-level="3"] { background-color: var(--level-3-bg); }
 .level-btn[data-level="4"] { background-color: var(--level-4-bg); }
 
-.palette-editor, .thresholds, .io-buttons, .export-buttons, .frame-actions, .image-legend-actions, .zoom-controls, .layer-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.palette-editor, .thresholds, .io-buttons, .frame-actions, .image-legend-actions, .zoom-controls, .layer-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
 .image-legend-actions {
     flex-direction: column;
@@ -288,7 +288,15 @@ label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.875rem
 }
 
 .export-options { margin-top: 8px; }
-.export-buttons { flex-wrap: wrap; }
+
+.export-controls {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+.export-controls select {
+    flex-grow: 1;
+}
 
 /* --- Game HUD --- */
 #game-hud {
