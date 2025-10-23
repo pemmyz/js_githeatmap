@@ -165,9 +165,14 @@
                         <button id="frame-move-left" title="Shift frame content left">&larr;</button>
                         <button id="frame-move-right" title="Shift frame content right">&rarr;</button>
                     </div>
-                    <label title="Pixels moved off one side will reappear on the opposite side">
-                        <input type="checkbox" id="frame-shift-wrap"> Wrap
-                    </label>
+                    <div class="frame-shift-options">
+                        <label title="Pixels moved off one side will reappear on the opposite side">
+                            <input type="checkbox" id="frame-shift-wrap"> Wrap
+                        </label>
+                        <label title="When checked, shifting frames creates an animation by cycling through all layers.">
+                            <input type="checkbox" id="frame-shift-animate"> Auto Wrap Animation
+                        </label>
+                    </div>
                 </div>
             </section>
             <!-- NEW SECTION -->

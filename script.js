@@ -1290,63 +1290,93 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function shiftFrame(dx, dy) {
-        pushUndoState();
+        const isAnimate = $('#frame-shift-animate').checked;
         const wrap = $('#frame-shift-wrap').checked;
-        const currentFrame = state.frames[state.currentFrameIndex];
-        if (!currentFrame) return;
-
-        const originalLayers = JSON.parse(JSON.stringify(currentFrame.layers));
-        const numLayers = originalLayers.length;
-        const newLayers = JSON.parse(JSON.stringify(originalLayers));
-
-        // Clear the newLayers to be blank
-        for (let l = 0; l < numLayers; l++) {
-            for (let c = 0; c < COLS; c++) {
-                for (let r = 0; r < ROWS; r++) {
-                    newLayers[l].cells[c][r].count = 0;
-                    newLayers[l].cells[c][r].level = 0;
-                }
-            }
-        }
-
-        for (let l = 0; l < numLayers; l++) {
-            for (let c = 0; c < COLS; c++) {
-                for (let r = 0; r < ROWS; r++) {
-                    let newL = l, newC = c, newR = r;
-
-                    if (dy !== 0) { // Vertical shift (within the same layer)
-                        newR = r + dy;
-                        if (wrap) {
-                            newR = (newR + ROWS) % ROWS;
-                        }
-                    } else if (dx !== 0) { // Horizontal shift (across layers)
-                        if (wrap) {
+        const sourceFrame = state.frames[state.currentFrameIndex];
+    
+        if (!sourceFrame?.layers?.length) return;
+    
+        const performPixelShift = (sourceLayers, totalDx, totalDy, doWrap) => {
+            const numLayers = sourceLayers.length;
+            const newLayers = JSON.parse(JSON.stringify(sourceLayers)); 
+            newLayers.forEach(layer => layer.cells.forEach(col => col.forEach(cell => { if (cell) { cell.count = 0; cell.level = 0; }})));
+    
+            for (let l = 0; l < numLayers; l++) {
+                for (let c = 0; c < COLS; c++) {
+                    for (let r = 0; r < ROWS; r++) {
+                        const sourceCell = sourceLayers[l].cells[c][r];
+                        if (!sourceCell) continue;
+    
+                        let newL = l, newC = c, newR = r, targetFound = true;
+    
+                        newR += totalDy;
+                        if (doWrap) newR = (newR % ROWS + ROWS) % ROWS;
+    
+                        const globalCol = l * COLS + c + totalDx;
+                        if (doWrap) {
                             const totalCols = COLS * numLayers;
-                            const globalCol = l * COLS + c;
-                            const newGlobalCol = (globalCol + dx + totalCols) % totalCols;
-                            newL = Math.floor(newGlobalCol / COLS);
-                            newC = newGlobalCol % COLS;
+                            const wrappedGlobalCol = (globalCol % totalCols + totalCols) % totalCols;
+                            newL = Math.floor(wrappedGlobalCol / COLS);
+                            newC = wrappedGlobalCol % COLS;
                         } else {
-                            newC = c + dx;
-                            while (newC < 0) {
-                                newC += COLS;
-                                newL--;
-                            }
-                            while (newC >= COLS) {
-                                newC -= COLS;
-                                newL++;
+                            if (globalCol >= 0 && globalCol < COLS * numLayers) {
+                                newL = Math.floor(globalCol / COLS);
+                                newC = globalCol % COLS;
+                            } else {
+                                targetFound = false;
                             }
                         }
-                    }
-                    
-                    if (newL >= 0 && newL < numLayers && newR >= 0 && newR < ROWS) {
-                         newLayers[newL].cells[newC][newR] = originalLayers[l].cells[c][r];
+                        
+                        if (targetFound && newR >= 0 && newR < ROWS) {
+                            newLayers[newL].cells[newC][newR] = JSON.parse(JSON.stringify(sourceCell));
+                        }
                     }
                 }
             }
-        }
+            return newLayers;
+        };
+    
+        pushUndoState();
+    
+        if (isAnimate && (dx !== 0 || dy !== 0)) {
+            const newFrames = [];
+            const numLayers = sourceFrame.layers.length;
+            let cycleLength = 0;
+            let stepDx = 0;
+            let stepDy = 0;
 
-        currentFrame.layers = newLayers;
+            if (dx !== 0) { // Horizontal pixel scroll
+                cycleLength = numLayers * COLS;
+                stepDx = dx;
+                stepDy = 0;
+            } else { // Vertical pixel scroll
+                cycleLength = ROWS;
+                stepDx = 0;
+                stepDy = dy;
+            }
+
+            if (cycleLength > 1) {
+                // Generate cycleLength - 1 new frames to complete the loop
+                for (let i = 1; i < cycleLength; i++) {
+                    const totalShiftX = i * stepDx;
+                    const totalShiftY = i * stepDy;
+                    const shiftedLayers = performPixelShift(sourceFrame.layers, totalShiftX, totalShiftY, wrap);
+                    newFrames.push({ layers: shiftedLayers });
+                }
+                if (newFrames.length > 0) {
+                     state.frames.splice(state.currentFrameIndex + 1, 0, ...newFrames);
+                }
+            } else {
+                // Fallback to a single shift if animation isn't possible
+                const shiftedLayers = performPixelShift(sourceFrame.layers, dx, dy, wrap);
+                state.frames[state.currentFrameIndex].layers = shiftedLayers;
+            }
+        } else {
+            // Standard single shift (1 pixel for horizontal, 1 row for vertical)
+            const shiftedLayers = performPixelShift(sourceFrame.layers, dx, dy, wrap);
+            state.frames[state.currentFrameIndex].layers = shiftedLayers;
+        }
+    
         rebuildDrawingAreasDOM();
         updateFramesUI();
         saveState();
