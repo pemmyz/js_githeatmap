@@ -1004,7 +1004,101 @@ document.addEventListener('DOMContentLoaded', () => {
     function clearImageLegend() { state.imageLegend.img = null; $('#image-legend-controls').classList.add('hidden'); renderAllLayers(); }
     function applyImageToFrame() { if (!state.imageLegend.img) return; pushUndoState(); const cells = getActiveCells(); if (!cells) return; const tempCanvas = document.createElement('canvas'); const tempCtx = tempCanvas.getContext('2d'); tempCanvas.width = COLS; tempCanvas.height = ROWS; tempCtx.drawImage(state.imageLegend.img, 0, 0, COLS, ROWS); const imageData = tempCtx.getImageData(0, 0, COLS, ROWS); for (let c = 0; c < COLS; c++) { for (let r = 0; r < ROWS; r++) { const index = (r * COLS + c) * 4; const brightness = (imageData.data[index] + imageData.data[index+1] + imageData.data[index+2]) / 3; const cell = cells[c][r]; if(cell) { const level = Math.floor(brightness / 256 * 5); const minCount = state.thresholds[level - 1] || (level > 0 ? 1 : 0); cell.count = (level === 0) ? 0 : minCount; } } } recalculateAllLevels(cells); updateFramesUI(); updateUIFromState(); renderAllLayers(); }
     function addActiveLayerAsNewFrame() { if (state.frames.length === 0) return; pushUndoState(); const sourceCells = getActiveCells(); if (!sourceCells) return; const numLayers = state.frames[0].layers.length; const newLayers = []; newLayers.push({ cells: JSON.parse(JSON.stringify(sourceCells)) }); for (let i = 1; i < numLayers; i++) { newLayers.push({ cells: generateGridData() }); } const newFrame = { layers: newLayers }; state.frames.splice(state.currentFrameIndex + 1, 0, newFrame); state.currentFrameIndex++; rebuildDrawingAreasDOM(); updateFramesUI(); saveState(); }
-    function shiftFrame(dx, dy) { const isAnimate = $('#frame-shift-animate').checked; const wrap = $('#frame-shift-wrap').checked; const sourceFrame = state.frames[state.currentFrameIndex]; if (!sourceFrame?.layers?.length) return; const performPixelShift = (sourceLayers, totalDx, totalDy, doWrap) => { const numLayers = sourceLayers.length; const newLayers = JSON.parse(JSON.stringify(sourceLayers)); newLayers.forEach(layer => layer.cells.forEach(col => col.forEach(cell => { if (cell) { cell.count = 0; cell.level = 0; }}))); for (let l = 0; l < numLayers; l++) { for (let c = 0; c < COLS; c++) { for (let r = 0; r < ROWS; r++) { const sourceCell = sourceLayers[l].cells[c][r]; if (!sourceCell) continue; let newL = l, newC = c, newR = r, targetFound = true; newR += totalDy; if (doWrap) newR = (newR % ROWS + ROWS) % ROWS; const globalCol = l * COLS + c + totalDx; if (doWrap) { const totalCols = COLS * numLayers; const wrappedGlobalCol = (globalCol % totalCols + totalCols) % totalCols; newL = Math.floor(wrappedGlobalCol / COLS); newC = wrappedGlobalCol % COLS; } else { if (globalCol >= 0 && globalCol < COLS * numLayers) { newL = Math.floor(globalCol / COLS); newC = globalCol % COLS; } else { targetFound = false; } } if (targetFound && newR >= 0 && newR < ROWS) { newLayers[newL].cells[newC][newR] = JSON.parse(JSON.stringify(sourceCell)); } } } } return newLayers; }; pushUndoState(); if (isAnimate && (dx !== 0 || dy !== 0)) { const newFrames = []; const numLayers = sourceFrame.layers.length; let cycleLength = 0; let stepDx = 0; let stepDy = 0; if (dx !== 0) { cycleLength = numLayers * COLS; stepDx = dx; stepDy = 0; } else { cycleLength = ROWS; stepDx = 0; stepDy = dy; } if (cycleLength > 1) { for (let i = 1; i < cycleLength; i++) { const totalShiftX = i * stepDx; const totalShiftY = i * stepDy; const shiftedLayers = performPixelShift(sourceFrame.layers, totalShiftX, totalShiftY, wrap); newFrames.push({ layers: shiftedLayers }); } if (newFrames.length > 0) { state.frames.splice(state.currentFrameIndex + 1, 0, ...newFrames); } } else { const shiftedLayers = performPixelShift(sourceFrame.layers, dx, dy, wrap); state.frames[state.currentFrameIndex].layers = shiftedLayers; } } else { const shiftedLayers = performPixelShift(sourceFrame.layers, dx, dy, wrap); state.frames[state.currentFrameIndex].layers = shiftedLayers; } rebuildDrawingAreasDOM(); updateFramesUI(); saveState(); }
+    
+    function shiftFrame(dx, dy) {
+        const isAnimate = $('#frame-shift-animate').checked;
+        const wrap = $('#frame-shift-wrap').checked;
+        const sourceFrame = state.frames[state.currentFrameIndex];
+        if (!sourceFrame?.layers?.length) return;
+    
+        const performPixelShift = (sourceLayers, totalDx, totalDy, doWrap) => {
+            const numLayers = sourceLayers.length;
+            const newLayers = JSON.parse(JSON.stringify(sourceLayers));
+            newLayers.forEach(layer => layer.cells.forEach(col => col.forEach(cell => { if (cell) { cell.count = 0; cell.level = 0; }})));
+    
+            const useStableMonthsLogic = state.animation.stableMonths && totalDx !== 0;
+    
+            for (let l = 0; l < numLayers; l++) {
+                for (let c = 0; c < COLS; c++) {
+                    for (let r = 0; r < ROWS; r++) {
+                        const sourceCell = sourceLayers[l].cells[c][r];
+                        if (!sourceCell) continue;
+    
+                        let newL = l, newC = c, newR = r, targetFound = true;
+                        newR += totalDy;
+                        if (doWrap) newR = (newR % ROWS + ROWS) % ROWS;
+    
+                        const globalCol = l * COLS + c + totalDx;
+                        if (doWrap) {
+                            const totalCols = COLS * numLayers;
+                            const wrappedGlobalCol = (globalCol % totalCols + totalCols) % totalCols;
+                            newL = Math.floor(wrappedGlobalCol / COLS);
+                            newC = wrappedGlobalCol % COLS;
+                        } else {
+                            if (globalCol >= 0 && globalCol < COLS * numLayers) {
+                                newL = Math.floor(globalCol / COLS);
+                                newC = globalCol % COLS;
+                            } else {
+                                targetFound = false;
+                            }
+                        }
+    
+                        if (targetFound && newR >= 0 && newR < ROWS) {
+                            if (useStableMonthsLogic) {
+                                const targetCell = newLayers[newL].cells[newC][newR];
+                                if (targetCell) {
+                                    targetCell.count = sourceCell.count;
+                                    targetCell.level = sourceCell.level;
+                                }
+                            } else {
+                                newLayers[newL].cells[newC][newR] = JSON.parse(JSON.stringify(sourceCell));
+                            }
+                        }
+                    }
+                }
+            }
+            return newLayers;
+        };
+    
+        pushUndoState();
+        if (isAnimate && (dx !== 0 || dy !== 0)) {
+            const newFrames = [];
+            const numLayers = sourceFrame.layers.length;
+            let cycleLength = 0;
+            let stepDx = 0;
+            let stepDy = 0;
+            if (dx !== 0) {
+                cycleLength = numLayers * COLS;
+                stepDx = dx;
+                stepDy = 0;
+            } else {
+                cycleLength = ROWS;
+                stepDx = 0;
+                stepDy = dy;
+            }
+            if (cycleLength > 1) {
+                for (let i = 1; i < cycleLength; i++) {
+                    const totalShiftX = i * stepDx;
+                    const totalShiftY = i * stepDy;
+                    const shiftedLayers = performPixelShift(sourceFrame.layers, totalShiftX, totalShiftY, wrap);
+                    newFrames.push({ layers: shiftedLayers });
+                }
+                if (newFrames.length > 0) {
+                    state.frames.splice(state.currentFrameIndex + 1, 0, ...newFrames);
+                }
+            } else {
+                const shiftedLayers = performPixelShift(sourceFrame.layers, dx, dy, wrap);
+                state.frames[state.currentFrameIndex].layers = shiftedLayers;
+            }
+        } else {
+            const shiftedLayers = performPixelShift(sourceFrame.layers, dx, dy, wrap);
+            state.frames[state.currentFrameIndex].layers = shiftedLayers;
+        }
+        rebuildDrawingAreasDOM();
+        updateFramesUI();
+        saveState();
+    }
+    
     async function exportAnimationGIF() { if (state.frames.length < 1) { return alert("Animation requires at least 1 frame."); } const warningEl = $('#export-anim-warning'); const exportButtons = $$('#export-btn'); const includeLabels = $('#export-include-labels').checked; const frameDelay = 1000 / state.animation.fps; try { warningEl.textContent = `Processing GIF...`; warningEl.classList.remove('hidden'); exportButtons.forEach(b => b.disabled = true); const gif = new GIF({ workers: 2, quality: 10, workerScript: 'gif.worker.js' }); gif.on('progress', function(p) { warningEl.textContent = `Encoding GIF... ${Math.round(p * 100)}%`; }); const firstFrameCells = state.frames[0]?.layers[0]?.cells; for (const frame of state.frames) { const topLayer = frame.layers[0]; if (topLayer && topLayer.cells) { let cellsForExport = topLayer.cells; if (state.animation.stableMonths && includeLabels && firstFrameCells) { const hybridCells = JSON.parse(JSON.stringify(topLayer.cells)); for (let c = 0; c < COLS; c++) { for (let r = 0; r < ROWS; r++) { if (hybridCells[c][r] && firstFrameCells[c][r]) { hybridCells[c][r].dateISO = firstFrameCells[c][r].dateISO; } } } cellsForExport = hybridCells; } const frameCanvas = createFrameCanvas(cellsForExport, includeLabels); gif.addFrame(frameCanvas, { delay: frameDelay }); } } await new Promise((resolve, reject) => { gif.on('finished', (blob) => { try { const url = URL.createObjectURL(blob); downloadFile(url, 'animation.gif'); URL.revokeObjectURL(url); resolve(); } catch (e) { reject(e); } }); gif.on('abort', () => reject(new Error("GIF encoding aborted."))); gif.render(); }); } catch (error) { console.error("Failed to export GIF:", error); warningEl.textContent = "Error exporting GIF."; } finally { warningEl.classList.add('hidden'); exportButtons.forEach(b => b.disabled = false); } }
     async function exportAnimationWEBP() { if (state.frames.length < 1) { return alert("Animation requires at least 1 frame."); } const warningEl = $('#export-anim-warning'); const exportButtons = $$('#export-btn'); const includeLabels = $('#export-include-labels').checked; const frameDuration = 1000 / state.animation.fps; try { warningEl.textContent = `Processing...`; warningEl.classList.remove('hidden'); exportButtons.forEach(b => b.disabled = true); const writer = new WebPWriter(); const firstFrameCells = state.frames[0]?.layers[0]?.cells; for (const frame of state.frames) { const topLayer = frame.layers[0]; if (topLayer && topLayer.cells) { let cellsForExport = topLayer.cells; if (state.animation.stableMonths && includeLabels && firstFrameCells) { const hybridCells = JSON.parse(JSON.stringify(topLayer.cells)); for (let c = 0; c < COLS; c++) { for (let r = 0; r < ROWS; r++) { if (hybridCells[c][r] && firstFrameCells[c][r]) { hybridCells[c][r].dateISO = firstFrameCells[c][r].dateISO; } } } cellsForExport = hybridCells; } const frameCanvas = createFrameCanvas(cellsForExport, includeLabels); writer.addFrame(frameCanvas.toDataURL('image/webp', {quality: 0.8}), { duration: frameDuration }); } } warningEl.textContent = "Encoding WEBP..."; const webpBlob = await writer.complete({ loop: 0 });  const url = URL.createObjectURL(webpBlob); downloadFile(url, 'animation.webp'); URL.revokeObjectURL(url); } catch (error) { console.error("Failed to export WEBP:", error); warningEl.textContent = "Error exporting WEBP."; } finally { warningEl.classList.add('hidden'); exportButtons.forEach(b => b.disabled = false); } }
     function exportAnimation() { if (state.frames.length === 0) return; const warningEl = $('#export-anim-warning'); warningEl.textContent = "This will trigger multiple downloads."; warningEl.classList.remove('hidden'); const includeLabels = $('#export-include-labels').checked; const firstFrameCells = state.frames[0]?.layers[0]?.cells; const downloads = []; state.frames.forEach((frame, frameIdx) => { const topLayer = frame.layers[0]; if (topLayer) { let cellsForExport = topLayer.cells; if (state.animation.stableMonths && includeLabels && firstFrameCells) { const hybridCells = JSON.parse(JSON.stringify(topLayer.cells)); for (let c = 0; c < COLS; c++) { for (let r = 0; r < ROWS; r++) { if (hybridCells[c][r] && firstFrameCells[c][r]) { hybridCells[c][r].dateISO = firstFrameCells[c][r].dateISO; } } } cellsForExport = hybridCells; } downloads.push({ cells: cellsForExport, frameIdx }); } }); let downloadIndex = 0; const downloadNext = () => { if (downloadIndex >= downloads.length) { warningEl.classList.add('hidden'); return; } const { cells, frameIdx } = downloads[downloadIndex]; const frameCanvas = createFrameCanvas(cells, includeLabels); const dataURL = frameCanvas.toDataURL('image/png'); downloadFile(dataURL, `anim-frame-${String(frameIdx).padStart(3, '0')}.png`); downloadIndex++; setTimeout(downloadNext, 200); }; downloadNext(); }
