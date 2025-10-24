@@ -101,6 +101,30 @@ document.addEventListener('DOMContentLoaded', () => {
         return state.frames[state.currentFrameIndex]?.layers[state.activeLayerIndex]?.cells;
     }
     
+    function darkenColor(hex, amount) {
+        if (!hex || hex === 'transparent' || hex.length < 4) return '#00000000';
+        let color = hex.startsWith('#') ? hex.slice(1) : hex;
+        if (color.length === 3) color = color.split('').map(char => char + char).join('');
+        if (color.length === 8) color = color.slice(0, 6);
+        const num = parseInt(color, 16);
+        let r = Math.max(0, (num >> 16) - amount);
+        let g = Math.max(0, ((num >> 8) & 0x00FF) - amount);
+        let b = Math.max(0, (num & 0x0000FF) - amount);
+        return `#${(b | (g << 8) | (r << 16)).toString(16).padStart(6, '0')}`;
+    }
+
+    function lightenColor(hex, amount) {
+        if (!hex || hex === 'transparent' || hex.length < 4) return '#00000000';
+        let color = hex.startsWith('#') ? hex.slice(1) : hex;
+        if (color.length === 3) color = color.split('').map(char => char + char).join('');
+        if (color.length === 8) color = color.slice(0, 6);
+        const num = parseInt(color, 16);
+        let r = Math.min(255, (num >> 16) + amount);
+        let g = Math.min(255, ((num >> 8) & 0x00FF) + amount);
+        let b = Math.min(255, (num & 0x0000FF) + amount);
+        return `#${(b | (g << 8) | (r << 16)).toString(16).padStart(6, '0')}`;
+    }
+
     function updateTotalContributions() {
         const cells = getActiveCells();
         if (!cells || state.game.active) return;
@@ -109,11 +133,33 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function drawCrispCell(context, x, y, size, mainColor, level) {
+        const isDarkMode = document.body.classList.contains('dark-mode');
+        let borderColor;
+        let highlightColor;
+
+        if (isDarkMode) {
+            borderColor = level === 0 ? mainColor : darkenColor(mainColor, 20);
+            highlightColor = getComputedStyle(document.body).getPropertyValue('--bg-color');
+        } else {
+            borderColor = darkenColor(mainColor, 20);
+            if (level === 0) {
+                highlightColor = lightenColor(mainColor, 30);
+            } else {
+                const level1Color = state.palette[1];
+                highlightColor = lightenColor(level1Color, 30);
+            }
+        }
+
         context.fillStyle = mainColor;
         context.fillRect(x, y, size, size);
-        context.strokeStyle = 'rgba(0,0,0,0.2)';
+        context.strokeStyle = borderColor;
         context.lineWidth = 1;
         context.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);
+        context.fillStyle = highlightColor;
+        context.fillRect(x, y, 1, 1);
+        context.fillRect(x + size - 1, y, 1, 1);
+        context.fillRect(x, y + size - 1, 1, 1);
+        context.fillRect(x + size - 1, y + size - 1, 1, 1);
     }
 
     // --- DATA & GRID LOGIC ---
@@ -712,6 +758,7 @@ document.addEventListener('DOMContentLoaded', () => {
         $('#game-pause').addEventListener('click', () => { if(state.game.active) state.game.paused = !state.game.paused; });
         $('#game-reset').addEventListener('click', () => { if (activeGame) { activeGame.reset(); state.game.paused = false; } });
         $('#game-switch').addEventListener('click', switchGame);
+        $('#game-difficulty').addEventListener('input', e => { state.game.difficulty = parseInt(e.target.value); if(activeGame) activeGame.difficulty = state.game.difficulty; });
         document.addEventListener('keydown', handleKeyDown);
         document.addEventListener('keyup', (e) => { keysPressed[e.key.toLowerCase()] = false; });
     }
@@ -756,13 +803,11 @@ document.addEventListener('DOMContentLoaded', () => {
         keysPressed[key] = true;
 
         if (state.game.active && !state.game.paused && activeGame) {
-            // Tetris-specific single-press controls
             if (currentGameType === 'tetris') {
                 if (key === 'a' || key === 'arrowleft') { e.preventDefault(); activeGame.rotate(); return; }
                 if (key === ' ') { e.preventDefault(); activeGame.hardDrop(); return; }
             }
-            // General game controls that require prevention
-            if (['w', 's', 'd', 'a', 'arrowup', 'arrowdown', 'arrowright', 'arrowleft'].includes(key)) {
+            if (['w', 's', 'd', 'a', 'arrowup', 'arrowdown', 'arrowright', 'arrowleft', ' '].includes(key)) {
                 e.preventDefault();
                 return;
             }
@@ -852,12 +897,12 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
     }
-
+    
     function startGame() {
         if (currentGameType === 'tetris') {
-            activeGame = new SidewaysTetris();
+            activeGame = new SidewaysTetris(state.palette);
         } else if (currentGameType === 'snake') {
-            activeGame = new SnakeGame(state.game.difficulty);
+            activeGame = new SnakeGame(state.game.difficulty, state.palette);
         }
         $('#game-score').textContent = '0';
         state.game.paused = false;
@@ -872,7 +917,6 @@ document.addEventListener('DOMContentLoaded', () => {
         state.game.active = !state.game.active;
 
         if (state.game.active) {
-            // --- ENTERING GAME MODE ---
             setPanelsInteractive(false);
             totalContributionsContainer.innerHTML = `Score: <span id="game-score">0</span>`;
             $('#game-hud').classList.remove('hidden');
@@ -891,7 +935,6 @@ document.addEventListener('DOMContentLoaded', () => {
             startGame();
 
         } else {
-            // --- EXITING GAME MODE ---
             setPanelsInteractive(true);
             totalContributionsContainer.innerHTML = `Total Contributions: <span id="total-contributions">0</span>`;
             $('#game-hud').classList.add('hidden');
@@ -911,6 +954,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     let lastTime = 0;
     function mainLoop(timestamp) {
+        if(!lastTime) lastTime = timestamp;
         const deltaTime = timestamp - lastTime;
         lastTime = timestamp;
 
