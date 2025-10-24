@@ -14,7 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const $ = (selector) => document.querySelector(selector);
     const $$ = (selector) => document.querySelectorAll(selector);
     const drawingAreaContainer = $('#drawing-area-container');
-    const totalContributionsEl = $('#total-contributions');
+    const totalContributionsContainer = $('#total-contributions-container');
     const themeToggle = $('#theme-toggle');
     const gameModeToggle = $('#game-mode-toggle');
     const modalBackdrop = $('#modal-backdrop');
@@ -33,6 +33,14 @@ document.addEventListener('DOMContentLoaded', () => {
     let state = {};
     const undoStack = [];
     const redoStack = [];
+    let activeGame = null;
+    let currentGameType = 'tetris'; // 'tetris' or 'snake'
+
+    // Variables to store editor state before starting the game
+    let editorFramesBackup = null;
+    let editorFrameIndexBackup = 0;
+    let editorLayerIndexBackup = 0;
+
 
     const defaultState = {
         thresholds: [1, 4, 8, 13],
@@ -68,11 +76,6 @@ document.addEventListener('DOMContentLoaded', () => {
             paused: false,
             score: 0,
             difficulty: 3,
-            writeToHeatmap: true,
-            player: { r: 3, c: 5 },
-            bullets: [],
-            enemies: [],
-            spawnTimer: 0,
         },
     };
 
@@ -97,59 +100,20 @@ document.addEventListener('DOMContentLoaded', () => {
     function getActiveCells() {
         return state.frames[state.currentFrameIndex]?.layers[state.activeLayerIndex]?.cells;
     }
-
-    function darkenColor(hex, amount) {
-        if (!hex || hex === 'transparent' || hex.length < 4) return '#00000000';
-        let color = hex.startsWith('#') ? hex.slice(1) : hex;
-        if (color.length === 3) color = color.split('').map(char => char + char).join('');
-        if (color.length === 8) color = color.slice(0, 6);
-        const num = parseInt(color, 16);
-        let r = Math.max(0, (num >> 16) - amount);
-        let g = Math.max(0, ((num >> 8) & 0x00FF) - amount);
-        let b = Math.max(0, (num & 0x0000FF) - amount);
-        return `#${(b | (g << 8) | (r << 16)).toString(16).padStart(6, '0')}`;
-    }
-
-    function lightenColor(hex, amount) {
-        if (!hex || hex === 'transparent' || hex.length < 4) return '#00000000';
-        let color = hex.startsWith('#') ? hex.slice(1) : hex;
-        if (color.length === 3) color = color.split('').map(char => char + char).join('');
-        if (color.length === 8) color = color.slice(0, 6);
-        const num = parseInt(color, 16);
-        let r = Math.min(255, (num >> 16) + amount);
-        let g = Math.min(255, ((num >> 8) & 0x00FF) + amount);
-        let b = Math.min(255, (num & 0x0000FF) + amount);
-        return `#${(b | (g << 8) | (r << 16)).toString(16).padStart(6, '0')}`;
+    
+    function updateTotalContributions() {
+        const cells = getActiveCells();
+        if (!cells || state.game.active) return;
+        const total = cells.flat().reduce((sum, cell) => sum + (cell ? cell.count : 0), 0);
+        $('#total-contributions').textContent = total.toLocaleString();
     }
 
     function drawCrispCell(context, x, y, size, mainColor, level) {
-        const isDarkMode = document.body.classList.contains('dark-mode');
-        let borderColor;
-        let highlightColor;
-
-        if (isDarkMode) {
-            borderColor = level === 0 ? mainColor : darkenColor(mainColor, 20);
-            highlightColor = getComputedStyle(document.body).getPropertyValue('--bg-color');
-        } else {
-            borderColor = darkenColor(mainColor, 20);
-            if (level === 0) {
-                highlightColor = lightenColor(mainColor, 30);
-            } else {
-                const level1Color = state.palette[1];
-                highlightColor = lightenColor(level1Color, 30);
-            }
-        }
-
         context.fillStyle = mainColor;
         context.fillRect(x, y, size, size);
-        context.strokeStyle = borderColor;
+        context.strokeStyle = 'rgba(0,0,0,0.2)';
         context.lineWidth = 1;
         context.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);
-        context.fillStyle = highlightColor;
-        context.fillRect(x, y, 1, 1);
-        context.fillRect(x + size - 1, y, 1, 1);
-        context.fillRect(x, y + size - 1, 1, 1);
-        context.fillRect(x + size - 1, y + size - 1, 1, 1);
     }
 
     // --- DATA & GRID LOGIC ---
@@ -193,16 +157,10 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
     }
-
-    function updateTotalContributions() {
-        const cells = getActiveCells();
-        if (!cells) return;
-        const total = cells.flat().reduce((sum, cell) => sum + (cell ? cell.count : 0), 0);
-        totalContributionsEl.textContent = total.toLocaleString();
-    }
     
     // --- STATE & PERSISTENCE ---
     const saveState = debounce(() => {
+        if (state.game.active) return;
         try {
             localStorage.setItem('heatmapEditorState', JSON.stringify(state));
         } catch (e) { console.error("Failed to save state:", e); }
@@ -215,12 +173,11 @@ document.addEventListener('DOMContentLoaded', () => {
                 const parsed = JSON.parse(savedState);
                 if (parsed.imageLegend) parsed.imageLegend.img = null;
                 state = { ...defaultState, ...parsed };
-                state.animation = { ...defaultState.animation, ...parsed.animation }; // Ensure new flags are added
+                state.animation = { ...defaultState.animation, ...parsed.animation };
                 state.frames = state.frames || [];
                 state.currentFrameIndex = Math.min(state.currentFrameIndex, state.frames.length - 1);
                 state.activeLayerIndex = state.activeLayerIndex || 0;
                 if (state.frames.length > 0 && (!state.frames[0].layers || state.frames[0].layers.length === 0)) {
-                    // Migration from old format
                     state.frames = state.frames.map(frame => ({ layers: [{ cells: frame.cells }] }));
                 }
 
@@ -235,6 +192,7 @@ document.addEventListener('DOMContentLoaded', () => {
     
     // --- UNDO / REDO ---
     function pushUndoState() {
+        if(state.game.active) return;
         undoStack.push(JSON.stringify({
             frames: state.frames,
             currentFrameIndex: state.currentFrameIndex,
@@ -245,13 +203,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function undo() {
-        if (undoStack.length === 0) return;
+        if (undoStack.length === 0 || state.game.active) return;
         const prevState = JSON.parse(undoStack.pop());
-        redoStack.push(JSON.stringify({
-            frames: state.frames,
-            currentFrameIndex: state.currentFrameIndex,
-            activeLayerIndex: state.activeLayerIndex
-        }));
+        redoStack.push(JSON.stringify({ frames: state.frames, currentFrameIndex: state.currentFrameIndex, activeLayerIndex: state.activeLayerIndex }));
         state.frames = prevState.frames;
         state.currentFrameIndex = prevState.currentFrameIndex;
         state.activeLayerIndex = prevState.activeLayerIndex;
@@ -261,13 +215,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function redo() {
-        if (redoStack.length === 0) return;
+        if (redoStack.length === 0 || state.game.active) return;
         const nextState = JSON.parse(redoStack.pop());
-        undoStack.push(JSON.stringify({
-            frames: state.frames,
-            currentFrameIndex: state.currentFrameIndex,
-            activeLayerIndex: state.activeLayerIndex
-        }));
+        undoStack.push(JSON.stringify({ frames: state.frames, currentFrameIndex: state.currentFrameIndex, activeLayerIndex: state.activeLayerIndex }));
         state.frames = nextState.frames;
         state.currentFrameIndex = nextState.currentFrameIndex;
         state.activeLayerIndex = nextState.activeLayerIndex;
@@ -293,27 +243,22 @@ document.addEventListener('DOMContentLoaded', () => {
                 instanceWrapper.classList.add('active-layer');
             }
 
-            if (index > 0) {
+            if (index > 0 && !state.game.active) {
                 const closeBtn = document.createElement('button');
                 closeBtn.className = 'close-layer-btn';
                 closeBtn.innerHTML = '&times;';
                 closeBtn.title = 'Remove Layer';
-                closeBtn.addEventListener('click', (e) => {
-                    e.stopPropagation();
-                    deleteLayer(index);
-                });
+                closeBtn.addEventListener('click', (e) => { e.stopPropagation(); deleteLayer(index); });
                 instanceWrapper.appendChild(closeBtn);
             }
 
             const container = document.createElement('div');
             container.className = 'heatmap-container';
-
             const labelsTop = document.createElement('div');
             labelsTop.className = 'heatmap-labels-top';
             const labelsLeft = document.createElement('div');
             labelsLeft.className = 'heatmap-labels-left';
             labelsLeft.innerHTML = `<span></span><span>Mon</span><span></span><span>Wed</span><span></span><span>Fri</span><span></span>`;
-            
             const canvas = document.createElement('canvas');
             canvas.className = 'heatmap-canvas';
             canvas.dataset.layerIndex = index;
@@ -387,31 +332,22 @@ document.addEventListener('DOMContentLoaded', () => {
             }
             
             if (index === state.activeLayerIndex && state.animation.onionSkin && state.animation.playing) {
-                let prevFrameIndex = state.currentFrameIndex;
-                let prevLayerIndex = state.activeLayerIndex - 1;
-
-                if (prevLayerIndex < 0) {
-                    prevFrameIndex--;
-                    if (prevFrameIndex >= 0) {
-                        prevLayerIndex = state.frames[prevFrameIndex].layers.length - 1;
-                    }
-                }
-
-                if (prevFrameIndex >= 0) {
-                    const prevLayer = state.frames[prevFrameIndex]?.layers[prevLayerIndex];
-                    if (prevLayer) {
-                         drawGrid(ctx, prevLayer.cells, 0.3);
-                    }
+                let prevFrameIndex = state.currentFrameIndex - 1;
+                 if (prevFrameIndex < 0) prevFrameIndex = state.frames.length -1;
+                 if (prevFrameIndex < state.frames.length) {
+                    const prevLayer = state.frames[prevFrameIndex]?.layers[0];
+                    if (prevLayer) { drawGrid(ctx, prevLayer.cells, 0.3); }
                 }
             }
 
             drawGrid(ctx, layer.cells);
             
+            if (index === state.activeLayerIndex && state.game.active && activeGame) {
+                activeGame.render(ctx, cellSize, gap);
+            }
+            
             if (index === state.activeLayerIndex && selection.active) {
                 drawSelection(ctx);
-            }
-            if (index === state.activeLayerIndex && state.game.active) {
-                renderGame(ctx);
             }
         });
     }
@@ -433,9 +369,14 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderAllMonthLabels() {
+        $$('.heatmap-labels-top, .heatmap-labels-left').forEach(el => {
+            el.style.display = state.game.active ? 'none' : 'flex';
+        });
+
+        if (state.game.active) return;
+        
         $$('.heatmap-labels-top').forEach((container, index) => {
             container.innerHTML = '';
-
             let cells;
             if (state.animation.stableMonths) {
                 cells = state.frames[0]?.layers[0]?.cells;
@@ -464,7 +405,6 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
-
     // --- DRAWING & TOOLS ---
     let isDrawing = false;
     let selection = { active: false, x1: 0, y1: 0, x2: 0, y2: 0 };
@@ -481,9 +421,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function handlePointerDown(e) {
+        if (state.game.active) return;
         const layerIndex = parseInt(e.target.dataset.layerIndex);
         setActiveLayer(layerIndex);
-        if (state.game.active) return;
         isDrawing = true;
         const pos = getCellFromCoords(e);
         if (!pos) return;
@@ -639,7 +579,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function setupEventListeners() {
         window.addEventListener('resize', debounce(resizeAndRenderAll, 200));
         themeToggle.addEventListener('click', toggleTheme);
-        gameModeToggle.addEventListener('click', () => toggleGameMode());
+        gameModeToggle.addEventListener('click', toggleGameMode);
         
         $('#add-layer-btn').addEventListener('click', addLayer);
 
@@ -650,12 +590,9 @@ document.addEventListener('DOMContentLoaded', () => {
             const dataToLoad = layerDataTextarea.value;
             try {
                 const parsedData = JSON.parse(dataToLoad);
-
-                // Basic validation
                 if (!Array.isArray(parsedData) || parsedData.length !== COLS || !Array.isArray(parsedData[0]) || parsedData[0].length !== ROWS) {
                     throw new Error("Data structure is invalid. Expected a 53x7 grid.");
                 }
-                
                 pushUndoState();
                 const activeCells = getActiveCells();
                 if (activeCells) {
@@ -665,9 +602,8 @@ document.addEventListener('DOMContentLoaded', () => {
                 updateFramesUI();
                 saveState();
                 closeLayerDataModal();
-
             } catch (error) {
-                alert("Failed to load layer data. Please ensure it is valid JSON with the correct 53x7 structure.\n\n" + error.message);
+                alert("Failed to load layer data: " + error.message);
             }
         });
 
@@ -765,29 +701,19 @@ document.addEventListener('DOMContentLoaded', () => {
         $('#export-btn').addEventListener('click', () => {
             const selectedFormat = $('#export-format-select').value;
             switch (selectedFormat) {
-                case 'png-current':
-                    exportFrame('image/png');
-                    break;
-                case 'webp-current':
-                    exportFrame('image/webp');
-                    break;
-                case 'png-anim':
-                    exportAnimation();
-                    break;
-                case 'webp-anim':
-                    exportAnimationWEBP();
-                    break;
-                case 'gif-anim':
-                    exportAnimationGIF();
-                    break;
+                case 'png-current': exportFrame('image/png'); break;
+                case 'webp-current': exportFrame('image/webp'); break;
+                case 'png-anim': exportAnimation(); break;
+                case 'webp-anim': exportAnimationWEBP(); break;
+                case 'gif-anim': exportAnimationGIF(); break;
             }
         });
         
-        $('#game-difficulty').addEventListener('input', e => state.game.difficulty = parseInt(e.target.value));
-        $('#game-pause').addEventListener('click', () => { state.game.paused = !state.game.paused; });
-        $('#game-reset').addEventListener('click', initGame);
-        $('#game-write-heatmap').addEventListener('change', e => state.game.writeToHeatmap = e.target.checked);
+        $('#game-pause').addEventListener('click', () => { if(state.game.active) state.game.paused = !state.game.paused; });
+        $('#game-reset').addEventListener('click', () => { if (activeGame) { activeGame.reset(); state.game.paused = false; } });
+        $('#game-switch').addEventListener('click', switchGame);
         document.addEventListener('keydown', handleKeyDown);
+        document.addEventListener('keyup', (e) => { keysPressed[e.key.toLowerCase()] = false; });
     }
     
     function updateUIFromState() {
@@ -821,9 +747,27 @@ document.addEventListener('DOMContentLoaded', () => {
             timeout = setTimeout(later, wait);
         };
     }
-
+    
+    const keysPressed = {};
     function handleKeyDown(e) {
         if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+        
+        const key = e.key.toLowerCase();
+        keysPressed[key] = true;
+
+        if (state.game.active && !state.game.paused && activeGame) {
+            // Tetris-specific single-press controls
+            if (currentGameType === 'tetris') {
+                if (key === 'a' || key === 'arrowleft') { e.preventDefault(); activeGame.rotate(); return; }
+                if (key === ' ') { e.preventDefault(); activeGame.hardDrop(); return; }
+            }
+            // General game controls that require prevention
+            if (['w', 's', 'd', 'a', 'arrowup', 'arrowdown', 'arrowright', 'arrowleft'].includes(key)) {
+                e.preventDefault();
+                return;
+            }
+        }
+
         const keyMap = {
             'p': () => state.currentTool = 'pencil', 'r': () => state.currentTool = 'rect',
             'e': () => state.currentTool = 'eraser', 'i': () => state.currentTool = 'picker',
@@ -831,6 +775,7 @@ document.addEventListener('DOMContentLoaded', () => {
             '3': () => state.brush.level = 2, '4': () => state.brush.level = 3,
             '5': () => state.brush.level = 4,
             'a': () => {
+                if (state.game.active) return;
                 state.brush.mode = (state.brush.mode === 'level') ? 'add' : 'level';
                 $('input[name="brush-mode"][value="'+state.brush.mode+'"]').checked = true;
             },
@@ -838,13 +783,11 @@ document.addEventListener('DOMContentLoaded', () => {
             't': () => toggleGameMode(),
             'v': toggleTheme,
         };
+
         if (keyMap[e.key]) { e.preventDefault(); keyMap[e.key](); updateUIFromState(); }
         if (e.ctrlKey || e.metaKey) {
             if (e.key === 'z') { e.preventDefault(); undo(); }
             if (e.key === 'y') { e.preventDefault(); redo(); }
-        }
-        if (state.game.active && !state.game.paused) {
-            if (['w', 'ArrowUp', 'a', 'ArrowLeft', 's', 'ArrowDown', 'd', 'ArrowRight', ' '].includes(e.key)) { e.preventDefault(); }
         }
     }
 
@@ -852,15 +795,8 @@ document.addEventListener('DOMContentLoaded', () => {
         document.body.classList.toggle('dark-mode', theme === 'dark');
         themeToggle.textContent = theme === 'dark' ? '☀️' : '🌙';
         localStorage.setItem('theme', theme);
-
-        if (theme === 'dark') {
-            state.palette = [...PRESETS.dark];
-            $('#palette-preset').value = 'dark';
-        } else {
-            state.palette = [...PRESETS.classic];
-            $('#palette-preset').value = 'classic';
-        }
-        
+        if (theme === 'dark') { state.palette = [...PRESETS.dark]; $('#palette-preset').value = 'dark'; } 
+        else { state.palette = [...PRESETS.classic]; $('#palette-preset').value = 'classic'; }
         updatePaletteUI();
         renderAllLayers();
     }
@@ -870,7 +806,7 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function resetAllSettings() {
-        if (confirm("Are you sure you want to reset all settings to their default values? This will clear your current project and cannot be undone.")) {
+        if (confirm("Are you sure you want to reset all settings? This will clear your current project and cannot be undone.")) {
             localStorage.removeItem('heatmapEditorState');
             localStorage.removeItem('theme');
             location.reload();
@@ -900,576 +836,77 @@ document.addEventListener('DOMContentLoaded', () => {
         else { reader.readAsText(file); }
     }
 
-    function importJSON(content) {
-        try {
-            const importedState = JSON.parse(content);
-            state = { ...defaultState, ...importedState };
+    function importJSON(content) { try { const importedState = JSON.parse(content); state = { ...defaultState, ...importedState }; rebuildDrawingAreasDOM(); updateUIFromState(); } catch (err) { alert('Error parsing JSON file.'); console.error(err); } }
+    function exportJSON() { const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state)); downloadFile(dataStr, "heatmap.json"); }
+    function importCSV(content) { const cells = getActiveCells(); if (!cells) return; const lines = content.split('\n').map(l => l.trim()).filter(Boolean); const dateMap = new Map(cells.flat().filter(Boolean).map(cell => [cell.dateISO, cell])); let changed = 0; lines.forEach(line => { const parts = line.split(','); if (parts.length === 2) { const [date, countStr] = parts; const cell = dateMap.get(date); if (cell) { cell.count = parseInt(countStr) || 0; changed++; } } }); recalculateAllLevels(cells); updateFramesUI(); updateUIFromState(); renderAllLayers(); alert(`Imported ${changed} data points from CSV.`); }
+    function exportCSV() { let csvContent = "date,count\n"; const cells = getActiveCells(); if (!cells) return; cells.flat().filter(Boolean).forEach(cell => { if (cell.count > 0) { csvContent += `${cell.dateISO},${cell.count}\n`; } }); const dataStr = "data:text/csv;charset=utf-8," + encodeURIComponent(csvContent); downloadFile(dataStr, "heatmap.csv"); }
+    function downloadFile(data, filename) { const link = document.createElement('a'); link.href = data; link.download = filename; link.click(); }
+    
+    function setPanelsInteractive(isInteractive) {
+        const panels = ['#tools-panel', '#timeline-panel'];
+        panels.forEach(selector => {
+            const panel = $(selector);
+            if (panel) {
+                panel.style.opacity = isInteractive ? '1' : '0.5';
+                panel.style.pointerEvents = isInteractive ? 'auto' : 'none';
+            }
+        });
+    }
+
+    function startGame() {
+        if (currentGameType === 'tetris') {
+            activeGame = new SidewaysTetris();
+        } else if (currentGameType === 'snake') {
+            activeGame = new SnakeGame(state.game.difficulty);
+        }
+        $('#game-score').textContent = '0';
+        state.game.paused = false;
+    }
+
+    function switchGame() {
+        currentGameType = (currentGameType === 'tetris') ? 'snake' : 'tetris';
+        startGame();
+    }
+    
+    function toggleGameMode() {
+        state.game.active = !state.game.active;
+
+        if (state.game.active) {
+            // --- ENTERING GAME MODE ---
+            setPanelsInteractive(false);
+            totalContributionsContainer.innerHTML = `Score: <span id="game-score">0</span>`;
+            $('#game-hud').classList.remove('hidden');
+
+            editorFramesBackup = JSON.parse(JSON.stringify(state.frames));
+            editorFrameIndexBackup = state.currentFrameIndex;
+            editorLayerIndexBackup = state.activeLayerIndex;
+
+            const gameLayer = { cells: generateGridData() };
+            const gameFrame = { layers: [gameLayer] };
+            state.frames = [gameFrame];
+            state.currentFrameIndex = 0;
+            state.activeLayerIndex = 0;
+            
+            rebuildDrawingAreasDOM();
+            startGame();
+
+        } else {
+            // --- EXITING GAME MODE ---
+            setPanelsInteractive(true);
+            totalContributionsContainer.innerHTML = `Total Contributions: <span id="total-contributions">0</span>`;
+            $('#game-hud').classList.add('hidden');
+            
+            if (editorFramesBackup) {
+                state.frames = editorFramesBackup;
+                state.currentFrameIndex = editorFrameIndexBackup;
+                state.activeLayerIndex = editorLayerIndexBackup;
+                editorFramesBackup = null;
+            }
+            activeGame = null;
+
             rebuildDrawingAreasDOM();
             updateUIFromState();
-        } catch (err) { alert('Error parsing JSON file.'); console.error(err); }
-    }
-    function exportJSON() {
-        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(state));
-        downloadFile(dataStr, "heatmap.json");
-    }
-
-    function importCSV(content) {
-        const cells = getActiveCells();
-        if (!cells) return;
-        const lines = content.split('\n').map(l => l.trim()).filter(Boolean);
-        const dateMap = new Map(cells.flat().filter(Boolean).map(cell => [cell.dateISO, cell]));
-        let changed = 0;
-        lines.forEach(line => {
-            const parts = line.split(',');
-            if (parts.length === 2) {
-                const [date, countStr] = parts;
-                const cell = dateMap.get(date);
-                if (cell) {
-                    cell.count = parseInt(countStr) || 0;
-                    changed++;
-                }
-            }
-        });
-        recalculateAllLevels(cells);
-        updateFramesUI();
-        updateUIFromState();
-        renderAllLayers();
-        alert(`Imported ${changed} data points from CSV.`);
-    }
-
-    function exportCSV() {
-        let csvContent = "date,count\n";
-        const cells = getActiveCells();
-        if (!cells) return;
-        cells.flat().filter(Boolean).forEach(cell => {
-            if (cell.count > 0) { csvContent += `${cell.dateISO},${cell.count}\n`; }
-        });
-        const dataStr = "data:text/csv;charset=utf-8," + encodeURIComponent(csvContent);
-        downloadFile(dataStr, "heatmap.csv");
-    }
-
-    // --- EXPORT RENDERING LOGIC ---
-    function drawFrameWithLabels(tempCtx, cells) {
-        const PADDING = 30;
-        const exportCellSize = BASE_CELL_SIZE;
-        const exportGap = GAP_SIZE;
-
-        const gridW = (exportCellSize + exportGap) * COLS - exportGap;
-        const gridH = (exportCellSize + exportGap) * ROWS - exportGap;
-        tempCtx.canvas.width = gridW + PADDING;
-        tempCtx.canvas.height = gridH + PADDING;
-        tempCtx.imageSmoothingEnabled = false;
-        tempCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg-color');
-        tempCtx.fillRect(0, 0, tempCtx.canvas.width, tempCtx.canvas.height);
-        tempCtx.font = '10px ' + getComputedStyle(document.body).getPropertyValue('--font-family');
-        tempCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--muted-color');
-        tempCtx.textAlign = 'left';
-        tempCtx.textBaseline = 'middle';
-        const dayLabels = ["", "Mon", "", "Wed", "", "Fri", ""];
-        dayLabels.forEach((label, i) => {
-            const y = PADDING + i * (exportCellSize + exportGap) + exportCellSize / 2;
-            tempCtx.fillText(label, 0, y);
-        });
-        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-        let lastMonth = -1;
-        for (let c = 0; c < COLS; c++) {
-            const cell = cells[c]?.find(cell => cell);
-            if (!cell) continue;
-            const date = new Date(cell.dateISO + 'T00:00:00');
-            const month = date.getUTCMonth();
-            if (month !== lastMonth && date.getUTCDate() < 8) {
-                tempCtx.fillText(months[month], PADDING + c * (exportCellSize + exportGap), 15);
-                lastMonth = month;
-            }
         }
-        for (let c = 0; c < COLS; c++) {
-            for (let r = 0; r < ROWS; r++) {
-                const cell = cells[c][r];
-                if (!cell) continue;
-                const x = PADDING + c * (exportCellSize + exportGap);
-                const y = PADDING + r * (exportCellSize + exportGap);
-                const mainColor = state.palette[cell.level];
-                drawCrispCell(tempCtx, x, y, exportCellSize, mainColor, cell.level);
-            }
-        }
-    }
-
-    function createFrameCanvas(cells, includeLabels) {
-        const tempCanvas = document.createElement('canvas');
-        const tempCtx = tempCanvas.getContext('2d');
-        
-        if (includeLabels) {
-            drawFrameWithLabels(tempCtx, cells);
-        } else {
-            const exportCellSize = BASE_CELL_SIZE;
-            const exportGap = GAP_SIZE;
-
-            tempCanvas.width = (exportCellSize + exportGap) * COLS - exportGap;
-            tempCanvas.height = (exportCellSize + exportGap) * ROWS - exportGap;
-            tempCtx.imageSmoothingEnabled = false;
-            tempCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg-color');
-            tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
-            for (let c = 0; c < COLS; c++) {
-                for (let r = 0; r < ROWS; r++) {
-                    const cell = cells[c][r];
-                    if (!cell) continue;
-                    const x = c * (exportCellSize + exportGap);
-                    const y = r * (exportCellSize + exportGap);
-                    const mainColor = state.palette[cell.level];
-                    drawCrispCell(tempCtx, x, y, exportCellSize, mainColor, cell.level);
-                }
-            }
-        }
-        return tempCanvas;
-    }
-
-    function exportFrame(format = 'image/png') {
-        const includeLabels = $('#export-include-labels').checked;
-        const frameCanvas = createFrameCanvas(getActiveCells(), includeLabels);
-        const dataURL = frameCanvas.toDataURL(format);
-        const ext = format.split('/')[1];
-        downloadFile(dataURL, `frame-${state.currentFrameIndex}-layer-${state.activeLayerIndex}.${ext}`);
-    }
-
-    function exportAnimation() {
-        if (state.frames.length === 0) return;
-        const warningEl = $('#export-anim-warning');
-        warningEl.textContent = "This will trigger multiple downloads.";
-        warningEl.classList.remove('hidden');
-        const includeLabels = $('#export-include-labels').checked;
-        const firstFrameCells = state.frames[0]?.layers[0]?.cells;
-
-        const downloads = [];
-        state.frames.forEach((frame, frameIdx) => {
-            const topLayer = frame.layers[0];
-            if (topLayer) {
-                let cellsForExport = topLayer.cells;
-                if (state.animation.stableMonths && includeLabels && firstFrameCells) {
-                    const hybridCells = JSON.parse(JSON.stringify(topLayer.cells));
-                    for (let c = 0; c < COLS; c++) {
-                        for (let r = 0; r < ROWS; r++) {
-                            if (hybridCells[c][r] && firstFrameCells[c][r]) {
-                                hybridCells[c][r].dateISO = firstFrameCells[c][r].dateISO;
-                            }
-                        }
-                    }
-                    cellsForExport = hybridCells;
-                }
-                downloads.push({ cells: cellsForExport, frameIdx });
-            }
-        });
-        
-        let downloadIndex = 0;
-        const downloadNext = () => {
-            if (downloadIndex >= downloads.length) {
-                warningEl.classList.add('hidden');
-                return;
-            }
-            const { cells, frameIdx } = downloads[downloadIndex];
-            const frameCanvas = createFrameCanvas(cells, includeLabels);
-            const dataURL = frameCanvas.toDataURL('image/png');
-            downloadFile(dataURL, `anim-frame-${String(frameIdx).padStart(3, '0')}.png`);
-            downloadIndex++;
-            setTimeout(downloadNext, 200);
-        };
-        downloadNext();
-    }
-
-    async function exportAnimationWEBP() {
-        if (state.frames.length < 1) { return alert("Animation requires at least 1 frame."); }
-        const warningEl = $('#export-anim-warning');
-        const exportButtons = $$('#export-btn');
-        const includeLabels = $('#export-include-labels').checked;
-        const frameDuration = 1000 / state.animation.fps;
-        try {
-            warningEl.textContent = `Processing top layer of ${state.frames.length} frames...`;
-            warningEl.classList.remove('hidden');
-            exportButtons.forEach(b => b.disabled = true);
-            const writer = new WebPWriter();
-            const firstFrameCells = state.frames[0]?.layers[0]?.cells;
-
-            for (const frame of state.frames) {
-                const topLayer = frame.layers[0];
-                if (topLayer && topLayer.cells) {
-                    let cellsForExport = topLayer.cells;
-                    if (state.animation.stableMonths && includeLabels && firstFrameCells) {
-                        const hybridCells = JSON.parse(JSON.stringify(topLayer.cells));
-                        for (let c = 0; c < COLS; c++) {
-                            for (let r = 0; r < ROWS; r++) {
-                                if (hybridCells[c][r] && firstFrameCells[c][r]) {
-                                    hybridCells[c][r].dateISO = firstFrameCells[c][r].dateISO;
-                                }
-                            }
-                        }
-                        cellsForExport = hybridCells;
-                    }
-                    const frameCanvas = createFrameCanvas(cellsForExport, includeLabels);
-                    writer.addFrame(frameCanvas.toDataURL('image/webp', {quality: 0.8}), { duration: frameDuration });
-                }
-            }
-            warningEl.textContent = "Encoding WEBP... Please wait.";
-            const webpBlob = await writer.complete({ loop: 0 }); 
-            const url = URL.createObjectURL(webpBlob);
-            downloadFile(url, 'animation.webp');
-            URL.revokeObjectURL(url);
-        } catch (error) {
-            console.error("Failed to export WEBP:", error);
-            warningEl.textContent = "Error exporting WEBP. See console for details.";
-        } finally {
-            warningEl.classList.add('hidden');
-            exportButtons.forEach(b => b.disabled = false);
-        }
-    }
-
-    async function exportAnimationGIF() {
-        if (state.frames.length < 1) { return alert("Animation requires at least 1 frame."); }
-        const warningEl = $('#export-anim-warning');
-        const exportButtons = $$('#export-btn');
-        const includeLabels = $('#export-include-labels').checked;
-        const frameDelay = 1000 / state.animation.fps;
-        try {
-            warningEl.textContent = `Processing GIF... This may take a while.`;
-            warningEl.classList.remove('hidden');
-            exportButtons.forEach(b => b.disabled = true);
-            const gif = new GIF({ workers: 2, quality: 10, workerScript: 'gif.worker.js' });
-            gif.on('progress', function(p) {
-                const progressPercent = Math.round(p * 100);
-                warningEl.textContent = `Encoding GIF... ${progressPercent}%`;
-            });
-            const firstFrameCells = state.frames[0]?.layers[0]?.cells;
-
-            for (const frame of state.frames) {
-                 const topLayer = frame.layers[0];
-                if (topLayer && topLayer.cells) {
-                    let cellsForExport = topLayer.cells;
-                    if (state.animation.stableMonths && includeLabels && firstFrameCells) {
-                        const hybridCells = JSON.parse(JSON.stringify(topLayer.cells));
-                        for (let c = 0; c < COLS; c++) {
-                            for (let r = 0; r < ROWS; r++) {
-                                if (hybridCells[c][r] && firstFrameCells[c][r]) {
-                                    hybridCells[c][r].dateISO = firstFrameCells[c][r].dateISO;
-                                }
-                            }
-                        }
-                        cellsForExport = hybridCells;
-                    }
-                    const frameCanvas = createFrameCanvas(cellsForExport, includeLabels);
-                    gif.addFrame(frameCanvas, { delay: frameDelay });
-                }
-            }
-            await new Promise((resolve, reject) => {
-                gif.on('finished', (blob) => {
-                    try {
-                        const url = URL.createObjectURL(blob);
-                        downloadFile(url, 'animation.gif');
-                        URL.revokeObjectURL(url);
-                        resolve();
-                    } catch (e) { reject(e); }
-                });
-                gif.on('abort', () => reject(new Error("GIF encoding aborted.")));
-                gif.render();
-            });
-        } catch (error) {
-            console.error("Failed to export GIF:", error);
-            warningEl.textContent = "Error exporting GIF. Check console for details.";
-        } finally {
-            warningEl.classList.add('hidden');
-            exportButtons.forEach(b => b.disabled = false);
-        }
-    }
-
-
-    function downloadFile(data, filename) {
-        const link = document.createElement('a');
-        link.href = data;
-        link.download = filename;
-        link.click();
-    }
-    
-    function loadImageLegend(dataURL) {
-        const img = new Image();
-        img.onload = () => {
-            state.imageLegend.img = img;
-            $('#image-legend-controls').classList.remove('hidden');
-            renderAllLayers();
-        };
-        img.src = dataURL;
-    }
-    
-    function clearImageLegend() {
-        state.imageLegend.img = null;
-        $('#image-legend-controls').classList.add('hidden');
-        renderAllLayers();
-    }
-    
-    function applyImageToFrame() {
-        if (!state.imageLegend.img) return;
-        pushUndoState();
-        const cells = getActiveCells();
-        if (!cells) return;
-
-        const tempCanvas = document.createElement('canvas');
-        const tempCtx = tempCanvas.getContext('2d');
-        tempCanvas.width = COLS; tempCanvas.height = ROWS;
-        tempCtx.drawImage(state.imageLegend.img, 0, 0, COLS, ROWS);
-        const imageData = tempCtx.getImageData(0, 0, COLS, ROWS);
-        for (let c = 0; c < COLS; c++) {
-            for (let r = 0; r < ROWS; r++) {
-                const index = (r * COLS + c) * 4;
-                const brightness = (imageData.data[index] + imageData.data[index+1] + imageData.data[index+2]) / 3;
-                const cell = cells[c][r];
-                if(cell) {
-                    const level = Math.floor(brightness / 256 * 5);
-                    const minCount = state.thresholds[level - 1] || (level > 0 ? 1 : 0);
-                    cell.count = (level === 0) ? 0 : minCount;
-                }
-            }
-        }
-        recalculateAllLevels(cells);
-        updateFramesUI();
-        updateUIFromState();
-        renderAllLayers();
-    }
-
-    let dragSrcElement = null;
-    function updateFramesUI() {
-        const list = $('#frames-list');
-        list.innerHTML = '';
-        state.frames.forEach((frame, index) => {
-            const item = document.createElement('div');
-            item.className = 'frame-item';
-            item.dataset.index = index;
-            if (index === state.currentFrameIndex) item.classList.add('selected');
-
-            const thumbCanvas = document.createElement('canvas');
-            thumbCanvas.width = 106;
-            thumbCanvas.height = 14;
-            
-            const topLayerCells = frame.layers[0]?.cells;
-            if (topLayerCells) {
-                drawThumbnail(thumbCanvas, topLayerCells);
-            }
-
-            const indexEl = document.createElement('span');
-            indexEl.className = 'frame-index';
-            indexEl.textContent = index;
-            item.appendChild(indexEl);
-            item.appendChild(thumbCanvas);
-            item.addEventListener('click', () => selectFrame(index));
-            item.draggable = true;
-            item.addEventListener('dragstart', handleDragStart);
-            item.addEventListener('dragover', handleDragOver);
-            item.addEventListener('drop', handleDrop);
-            item.addEventListener('dragend', handleDragEnd);
-            list.appendChild(item);
-        });
-    }
-    function handleDragStart(e) {
-        dragSrcElement = this;
-        e.dataTransfer.effectAllowed = 'move';
-        e.dataTransfer.setData('text/html', this.innerHTML);
-        this.classList.add('dragging');
-    }
-    function handleDragOver(e) { e.preventDefault(); }
-    function handleDrop(e) {
-        e.stopPropagation();
-        if (dragSrcElement !== this) {
-            const srcIndex = parseInt(dragSrcElement.dataset.index);
-            const destIndex = parseInt(this.dataset.index);
-            const [removed] = state.frames.splice(srcIndex, 1);
-            state.frames.splice(destIndex, 0, removed);
-            if (state.currentFrameIndex === srcIndex) {
-                state.currentFrameIndex = destIndex;
-            } else if (srcIndex < state.currentFrameIndex && destIndex >= state.currentFrameIndex) {
-                state.currentFrameIndex--;
-            } else if (srcIndex > state.currentFrameIndex && destIndex <= state.currentFrameIndex) {
-                state.currentFrameIndex++;
-            }
-            updateFramesUI();
-            rebuildDrawingAreasDOM();
-            saveState();
-        }
-    }
-    function handleDragEnd(e) { this.classList.remove('dragging'); }
-    function drawThumbnail(canvas, cells) {
-        const thumbCtx = canvas.getContext('2d');
-        const thumbCellSize = 2;
-        thumbCtx.clearRect(0, 0, canvas.width, canvas.height);
-        for (let c = 0; c < COLS; c++) {
-            for (let r = 0; r < ROWS; r++) {
-                const cell = cells[c][r];
-                if (cell) {
-                    thumbCtx.fillStyle = state.palette[cell.level];
-                    thumbCtx.fillRect(c * thumbCellSize, r * thumbCellSize, thumbCellSize, thumbCellSize);
-                }
-            }
-        }
-    }
-    
-    function shiftFrame(dx, dy) {
-        const isAnimate = $('#frame-shift-animate').checked;
-        const wrap = $('#frame-shift-wrap').checked;
-        const sourceFrame = state.frames[state.currentFrameIndex];
-    
-        if (!sourceFrame?.layers?.length) return;
-    
-        const performPixelShift = (sourceLayers, totalDx, totalDy, doWrap) => {
-            const numLayers = sourceLayers.length;
-            const newLayers = JSON.parse(JSON.stringify(sourceLayers)); 
-            newLayers.forEach(layer => layer.cells.forEach(col => col.forEach(cell => { if (cell) { cell.count = 0; cell.level = 0; }})));
-    
-            for (let l = 0; l < numLayers; l++) {
-                for (let c = 0; c < COLS; c++) {
-                    for (let r = 0; r < ROWS; r++) {
-                        const sourceCell = sourceLayers[l].cells[c][r];
-                        if (!sourceCell) continue;
-    
-                        let newL = l, newC = c, newR = r, targetFound = true;
-    
-                        newR += totalDy;
-                        if (doWrap) newR = (newR % ROWS + ROWS) % ROWS;
-    
-                        const globalCol = l * COLS + c + totalDx;
-                        if (doWrap) {
-                            const totalCols = COLS * numLayers;
-                            const wrappedGlobalCol = (globalCol % totalCols + totalCols) % totalCols;
-                            newL = Math.floor(wrappedGlobalCol / COLS);
-                            newC = wrappedGlobalCol % COLS;
-                        } else {
-                            if (globalCol >= 0 && globalCol < COLS * numLayers) {
-                                newL = Math.floor(globalCol / COLS);
-                                newC = globalCol % COLS;
-                            } else {
-                                targetFound = false;
-                            }
-                        }
-                        
-                        if (targetFound && newR >= 0 && newR < ROWS) {
-                            newLayers[newL].cells[newC][newR] = JSON.parse(JSON.stringify(sourceCell));
-                        }
-                    }
-                }
-            }
-            return newLayers;
-        };
-    
-        pushUndoState();
-    
-        if (isAnimate && (dx !== 0 || dy !== 0)) {
-            const newFrames = [];
-            const numLayers = sourceFrame.layers.length;
-            let cycleLength = 0;
-            let stepDx = 0;
-            let stepDy = 0;
-
-            if (dx !== 0) { // Horizontal pixel scroll
-                cycleLength = numLayers * COLS;
-                stepDx = dx;
-                stepDy = 0;
-            } else { // Vertical pixel scroll
-                cycleLength = ROWS;
-                stepDx = 0;
-                stepDy = dy;
-            }
-
-            if (cycleLength > 1) {
-                // Generate cycleLength - 1 new frames to complete the loop
-                for (let i = 1; i < cycleLength; i++) {
-                    const totalShiftX = i * stepDx;
-                    const totalShiftY = i * stepDy;
-                    const shiftedLayers = performPixelShift(sourceFrame.layers, totalShiftX, totalShiftY, wrap);
-                    newFrames.push({ layers: shiftedLayers });
-                }
-                if (newFrames.length > 0) {
-                     state.frames.splice(state.currentFrameIndex + 1, 0, ...newFrames);
-                }
-            } else {
-                // Fallback to a single shift if animation isn't possible
-                const shiftedLayers = performPixelShift(sourceFrame.layers, dx, dy, wrap);
-                state.frames[state.currentFrameIndex].layers = shiftedLayers;
-            }
-        } else {
-            // Standard single pixel shift
-            const shiftedLayers = performPixelShift(sourceFrame.layers, dx, dy, wrap);
-            state.frames[state.currentFrameIndex].layers = shiftedLayers;
-        }
-    
-        rebuildDrawingAreasDOM();
-        updateFramesUI();
-        saveState();
-    }
-
-
-    function addActiveLayerAsNewFrame() {
-        if (state.frames.length === 0) return;
-        pushUndoState();
-
-        const sourceCells = getActiveCells();
-        if (!sourceCells) return;
-
-        const numLayers = state.frames[0].layers.length;
-        const newLayers = [];
-
-        newLayers.push({ cells: JSON.parse(JSON.stringify(sourceCells)) });
-
-        for (let i = 1; i < numLayers; i++) {
-            newLayers.push({ cells: generateGridData() });
-        }
-        
-        const newFrame = { layers: newLayers };
-
-        state.frames.splice(state.currentFrameIndex + 1, 0, newFrame);
-        state.currentFrameIndex++;
-        
-        rebuildDrawingAreasDOM();
-        updateFramesUI();
-        saveState();
-    }
-
-    function newFrame() {
-        pushUndoState();
-        const currentFrame = state.frames[state.currentFrameIndex];
-        const numLayers = currentFrame ? currentFrame.layers.length : 1;
-        
-        const newLayers = [];
-        for (let i=0; i < numLayers; i++) {
-            newLayers.push({ cells: generateGridData() });
-        }
-        
-        state.frames.push({ layers: newLayers });
-        state.currentFrameIndex = state.frames.length - 1;
-        rebuildDrawingAreasDOM();
-        updateFramesUI();
-        saveState();
-    }
-    function duplicateFrame() {
-        if (state.frames.length === 0) return;
-        pushUndoState();
-        const newFrame = JSON.parse(JSON.stringify(state.frames[state.currentFrameIndex]));
-        state.frames.splice(state.currentFrameIndex + 1, 0, newFrame);
-        state.currentFrameIndex++;
-        rebuildDrawingAreasDOM();
-        updateFramesUI();
-        saveState();
-    }
-    function deleteFrame() {
-        if (state.frames.length <= 1) return;
-        pushUndoState();
-        state.frames.splice(state.currentFrameIndex, 1);
-        if (state.currentFrameIndex >= state.frames.length) {
-            state.currentFrameIndex = state.frames.length - 1;
-        }
-        selectFrame(state.currentFrameIndex);
-    }
-    function selectFrame(index) {
-        if (index < 0 || index >= state.frames.length || index === state.currentFrameIndex) return;
-        state.currentFrameIndex = index;
-        rebuildDrawingAreasDOM();
-        updateUIFromState();
-    }
-    function toggleAnimation() {
-        state.animation.playing = !state.animation.playing;
-        $('#anim-play').innerHTML = state.animation.playing ? '<svg viewBox="0 0 24 24"><path d="M14,19H18V5H14M6,19H10V5H6V19Z"/></svg>' : '<svg viewBox="0 0 24 24"><path d="M8,5.14V19.14L19,12.14L8,5.14Z"/></svg>';
     }
 
     let lastTime = 0;
@@ -1480,136 +917,60 @@ document.addEventListener('DOMContentLoaded', () => {
         if (state.animation.playing && !state.game.active) {
             state.animation.lastFrameTime += deltaTime;
             const frameDuration = 1000 / state.animation.fps;
-
             if (state.animation.lastFrameTime >= frameDuration) {
                 state.animation.lastFrameTime %= frameDuration;
-                
-                // Animation cycles through frames, always showing the first layer (index 0).
-                if (state.frames.length === 0) return;
-
-                const nextFrameIndex = (state.currentFrameIndex + 1) % state.frames.length;
-                
-                const frameChanged = state.currentFrameIndex !== nextFrameIndex;
-                const layerIsNotFirst = state.activeLayerIndex !== 0;
-
-                if (frameChanged) {
-                    // If the frame changes, we update both frame and layer in the state,
-                    // then do a full UI rebuild for the new frame.
-                    state.currentFrameIndex = nextFrameIndex;
-                    state.activeLayerIndex = 0;
-                    rebuildDrawingAreasDOM();
-                    updateUIFromState();
-                    saveState();
-                } else if (layerIsNotFirst) {
-                    // If only the layer needs to be reset (on the first tick of animation),
-                    // we can do a lighter UI update.
-                    setActiveLayer(0);
+                if (state.frames.length > 0) {
+                    const nextFrameIndex = (state.currentFrameIndex + 1) % state.frames.length;
+                    if (state.currentFrameIndex !== nextFrameIndex || state.activeLayerIndex !== 0) {
+                        state.currentFrameIndex = nextFrameIndex;
+                        state.activeLayerIndex = 0;
+                        rebuildDrawingAreasDOM();
+                        updateUIFromState();
+                    }
                 }
             }
         }
 
-        if (state.game.active && !state.game.paused) { 
-            updateGame(deltaTime);
+        if (state.game.active && !state.game.paused && activeGame) { 
+            activeGame.update(deltaTime, keysPressed);
             renderAllLayers();
+            const scoreEl = $('#game-score');
+            if (scoreEl) scoreEl.textContent = activeGame.score.toLocaleString();
+
+            if (activeGame.gameOver) {
+                state.game.paused = true;
+                setTimeout(() => {
+                    alert(`Game Over!\nFinal Score: ${activeGame.score.toLocaleString()}`);
+                    toggleGameMode();
+                }, 100);
+            }
         }
         
         requestAnimationFrame(mainLoop);
     }
-
-    const keysPressed = {};
-    document.addEventListener('keydown', (e) => keysPressed[e.key] = true);
-    document.addEventListener('keyup', (e) => keysPressed[e.key] = false);
-
-    function toggleGameMode() {
-        state.game.active = !state.game.active;
-        $('#main-content').classList.toggle('game-active', state.game.active);
-        $('#game-hud').classList.toggle('hidden', !state.game.active);
-        $('#tools-panel').classList.toggle('hidden', state.game.active);
-        $('#timeline-panel').classList.toggle('hidden', state.game.active);
-        if (state.game.active) {
-            initGame();
-            state.animation.playing = false;
-            updateUIFromState();
-            rebuildDrawingAreasDOM();
-        }
-    }
-    function initGame() {
-        state.game.score = 0; state.game.paused = false; state.game.player = { r: 3, c: 5 };
-        state.game.bullets = []; state.game.enemies = []; state.game.spawnTimer = 0;
-        $('#game-score').textContent = 0;
-    }
-    function updateGame(dt) {
-        const playerSpeed = 0.01;
-        if (keysPressed['w'] || keysPressed['ArrowUp']) state.game.player.r -= playerSpeed * dt;
-        if (keysPressed['s'] || keysPressed['ArrowDown']) state.game.player.r += playerSpeed * dt;
-        if (keysPressed['a'] || keysPressed['ArrowLeft']) state.game.player.c -= playerSpeed * dt;
-        if (keysPressed['d'] || keysPressed['ArrowRight']) state.game.player.c += playerSpeed * dt;
-        state.game.player.r = Math.max(0, Math.min(ROWS - 1, state.game.player.r));
-        state.game.player.c = Math.max(0, Math.min(COLS - 1, state.game.player.c));
-        if (keysPressed[' ']) {
-            if (!state.game.lastShotTime || (performance.now() - state.game.lastShotTime > 200)) {
-                state.game.bullets.push({ r: state.game.player.r, c: state.game.player.c, vx: 0.02 });
-                state.game.lastShotTime = performance.now();
-            }
-        }
-        state.game.bullets = state.game.bullets.filter(b => b.c < COLS);
-        state.game.bullets.forEach(b => b.c += b.vx * dt);
-        state.game.spawnTimer += dt;
-        const spawnInterval = 2000 / state.game.difficulty;
-        if (state.game.spawnTimer > spawnInterval) {
-            state.game.spawnTimer = 0;
-            state.game.enemies.push({r: Math.random() * ROWS, c: COLS - 1, vx: -0.005 * (1 + Math.random() * state.game.difficulty)});
-        }
-        state.game.enemies = state.game.enemies.filter(e => e.c > -1);
-        state.game.enemies.forEach(e => e.c += e.vx * dt);
-        let scoreToAdd = 0;
-        state.game.bullets = state.game.bullets.filter(b => {
-            const hitEnemy = state.game.enemies.find(e => !e.hit && Math.abs(b.r - e.r) < 0.8 && Math.abs(b.c - e.c) < 0.8);
-            if (hitEnemy) {
-                hitEnemy.hit = true; scoreToAdd += 10;
-                if (state.game.writeToHeatmap) {
-                    const cells = getActiveCells();
-                    if(cells) {
-                        const cell = cells[Math.floor(hitEnemy.c)]?.[Math.floor(hitEnemy.r)];
-                        if (cell) {
-                            cell.count++;
-                            cell.level = calculateLevel(cell.count);
-                        }
-                    }
-                }
-                return false;
-            }
-            return true;
-        });
-        state.game.enemies = state.game.enemies.filter(e => !e.hit);
-        if (scoreToAdd > 0) {
-            state.game.score += scoreToAdd;
-            $('#game-score').textContent = state.game.score;
-            updateTotalContributions();
-            updateFramesUI();
-        }
-    }
-    function renderGame(ctx) {
-        const getPixelPos = (r, c) => ({x: c * (cellSize + gap) + cellSize / 2, y: r * (cellSize + gap) + cellSize / 2});
-        const pPos = getPixelPos(state.game.player.r, state.game.player.c);
-        ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--accent-color');
-        ctx.beginPath();
-        ctx.moveTo(pPos.x + 8, pPos.y);
-        ctx.lineTo(pPos.x - 4, pPos.y - 5);
-        ctx.lineTo(pPos.x - 4, pPos.y + 5);
-        ctx.closePath();
-        ctx.fill();
-        ctx.fillStyle = '#ffcc00';
-        state.game.bullets.forEach(b => {
-            const bPos = getPixelPos(b.r, b.c);
-            ctx.fillRect(bPos.x, bPos.y - 1, 6, 2);
-        });
-        ctx.fillStyle = '#ff4444';
-        state.game.enemies.forEach(e => {
-            const ePos = getPixelPos(e.r, e.c);
-            ctx.fillRect(ePos.x - 4, ePos.y - 4, 8, 8);
-        });
-    }
+    
+    function newFrame() { if(state.game.active) return; pushUndoState(); const currentFrame = state.frames[state.currentFrameIndex]; const numLayers = currentFrame ? currentFrame.layers.length : 1; const newLayers = []; for (let i=0; i < numLayers; i++) { newLayers.push({ cells: generateGridData() }); } state.frames.push({ layers: newLayers }); state.currentFrameIndex = state.frames.length - 1; rebuildDrawingAreasDOM(); updateFramesUI(); saveState(); }
+    function duplicateFrame() { if(state.game.active) return; if (state.frames.length === 0) return; pushUndoState(); const newFrame = JSON.parse(JSON.stringify(state.frames[state.currentFrameIndex])); state.frames.splice(state.currentFrameIndex + 1, 0, newFrame); state.currentFrameIndex++; rebuildDrawingAreasDOM(); updateFramesUI(); saveState(); }
+    function deleteFrame() { if(state.game.active) return; if (state.frames.length <= 1) return; pushUndoState(); state.frames.splice(state.currentFrameIndex, 1); if (state.currentFrameIndex >= state.frames.length) { state.currentFrameIndex = state.frames.length - 1; } selectFrame(state.currentFrameIndex); }
+    function selectFrame(index) { if (index < 0 || index >= state.frames.length || index === state.currentFrameIndex) return; state.currentFrameIndex = index; rebuildDrawingAreasDOM(); updateUIFromState(); }
+    function updateFramesUI() { const list = $('#frames-list'); list.innerHTML = ''; state.frames.forEach((frame, index) => { const item = document.createElement('div'); item.className = 'frame-item'; item.dataset.index = index; if (index === state.currentFrameIndex) item.classList.add('selected'); const thumbCanvas = document.createElement('canvas'); thumbCanvas.width = 106; thumbCanvas.height = 14; const topLayerCells = frame.layers[0]?.cells; if (topLayerCells) { drawThumbnail(thumbCanvas, topLayerCells); } const indexEl = document.createElement('span'); indexEl.className = 'frame-index'; indexEl.textContent = index; item.appendChild(indexEl); item.appendChild(thumbCanvas); item.addEventListener('click', () => selectFrame(index)); item.draggable = true; item.addEventListener('dragstart', handleDragStart); item.addEventListener('dragover', handleDragOver); item.addEventListener('drop', handleDrop); item.addEventListener('dragend', handleDragEnd); list.appendChild(item); }); }
+    function handleDragStart(e) { dragSrcElement = this; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/html', this.innerHTML); this.classList.add('dragging'); }
+    function handleDragOver(e) { e.preventDefault(); }
+    function handleDrop(e) { e.stopPropagation(); if (dragSrcElement !== this) { const srcIndex = parseInt(dragSrcElement.dataset.index); const destIndex = parseInt(this.dataset.index); const [removed] = state.frames.splice(srcIndex, 1); state.frames.splice(destIndex, 0, removed); if (state.currentFrameIndex === srcIndex) { state.currentFrameIndex = destIndex; } else if (srcIndex < state.currentFrameIndex && destIndex >= state.currentFrameIndex) { state.currentFrameIndex--; } else if (srcIndex > state.currentFrameIndex && destIndex <= state.currentFrameIndex) { state.currentFrameIndex++; } updateFramesUI(); rebuildDrawingAreasDOM(); saveState(); } }
+    function handleDragEnd(e) { this.classList.remove('dragging'); }
+    function drawThumbnail(canvas, cells) { const thumbCtx = canvas.getContext('2d'); const thumbCellSize = 2; thumbCtx.clearRect(0, 0, canvas.width, canvas.height); for (let c = 0; c < COLS; c++) { for (let r = 0; r < ROWS; r++) { const cell = cells[c][r]; if (cell) { thumbCtx.fillStyle = state.palette[cell.level]; thumbCtx.fillRect(c * thumbCellSize, r * thumbCellSize, thumbCellSize, thumbCellSize); } } } }
+    function toggleAnimation() { state.animation.playing = !state.animation.playing; $('#anim-play').innerHTML = state.animation.playing ? '<svg viewBox="0 0 24 24"><path d="M14,19H18V5H14M6,19H10V5H6V19Z"/></svg>' : '<svg viewBox="0 0 24 24"><path d="M8,5.14V19.14L19,12.14L8,5.14Z"/></svg>'; }
+    function loadImageLegend(dataURL) { const img = new Image(); img.onload = () => { state.imageLegend.img = img; $('#image-legend-controls').classList.remove('hidden'); renderAllLayers(); }; img.src = dataURL; }
+    function clearImageLegend() { state.imageLegend.img = null; $('#image-legend-controls').classList.add('hidden'); renderAllLayers(); }
+    function applyImageToFrame() { if (!state.imageLegend.img) return; pushUndoState(); const cells = getActiveCells(); if (!cells) return; const tempCanvas = document.createElement('canvas'); const tempCtx = tempCanvas.getContext('2d'); tempCanvas.width = COLS; tempCanvas.height = ROWS; tempCtx.drawImage(state.imageLegend.img, 0, 0, COLS, ROWS); const imageData = tempCtx.getImageData(0, 0, COLS, ROWS); for (let c = 0; c < COLS; c++) { for (let r = 0; r < ROWS; r++) { const index = (r * COLS + c) * 4; const brightness = (imageData.data[index] + imageData.data[index+1] + imageData.data[index+2]) / 3; const cell = cells[c][r]; if(cell) { const level = Math.floor(brightness / 256 * 5); const minCount = state.thresholds[level - 1] || (level > 0 ? 1 : 0); cell.count = (level === 0) ? 0 : minCount; } } } recalculateAllLevels(cells); updateFramesUI(); updateUIFromState(); renderAllLayers(); }
+    function addActiveLayerAsNewFrame() { if (state.frames.length === 0) return; pushUndoState(); const sourceCells = getActiveCells(); if (!sourceCells) return; const numLayers = state.frames[0].layers.length; const newLayers = []; newLayers.push({ cells: JSON.parse(JSON.stringify(sourceCells)) }); for (let i = 1; i < numLayers; i++) { newLayers.push({ cells: generateGridData() }); } const newFrame = { layers: newLayers }; state.frames.splice(state.currentFrameIndex + 1, 0, newFrame); state.currentFrameIndex++; rebuildDrawingAreasDOM(); updateFramesUI(); saveState(); }
+    function shiftFrame(dx, dy) { const isAnimate = $('#frame-shift-animate').checked; const wrap = $('#frame-shift-wrap').checked; const sourceFrame = state.frames[state.currentFrameIndex]; if (!sourceFrame?.layers?.length) return; const performPixelShift = (sourceLayers, totalDx, totalDy, doWrap) => { const numLayers = sourceLayers.length; const newLayers = JSON.parse(JSON.stringify(sourceLayers)); newLayers.forEach(layer => layer.cells.forEach(col => col.forEach(cell => { if (cell) { cell.count = 0; cell.level = 0; }}))); for (let l = 0; l < numLayers; l++) { for (let c = 0; c < COLS; c++) { for (let r = 0; r < ROWS; r++) { const sourceCell = sourceLayers[l].cells[c][r]; if (!sourceCell) continue; let newL = l, newC = c, newR = r, targetFound = true; newR += totalDy; if (doWrap) newR = (newR % ROWS + ROWS) % ROWS; const globalCol = l * COLS + c + totalDx; if (doWrap) { const totalCols = COLS * numLayers; const wrappedGlobalCol = (globalCol % totalCols + totalCols) % totalCols; newL = Math.floor(wrappedGlobalCol / COLS); newC = wrappedGlobalCol % COLS; } else { if (globalCol >= 0 && globalCol < COLS * numLayers) { newL = Math.floor(globalCol / COLS); newC = globalCol % COLS; } else { targetFound = false; } } if (targetFound && newR >= 0 && newR < ROWS) { newLayers[newL].cells[newC][newR] = JSON.parse(JSON.stringify(sourceCell)); } } } } return newLayers; }; pushUndoState(); if (isAnimate && (dx !== 0 || dy !== 0)) { const newFrames = []; const numLayers = sourceFrame.layers.length; let cycleLength = 0; let stepDx = 0; let stepDy = 0; if (dx !== 0) { cycleLength = numLayers * COLS; stepDx = dx; stepDy = 0; } else { cycleLength = ROWS; stepDx = 0; stepDy = dy; } if (cycleLength > 1) { for (let i = 1; i < cycleLength; i++) { const totalShiftX = i * stepDx; const totalShiftY = i * stepDy; const shiftedLayers = performPixelShift(sourceFrame.layers, totalShiftX, totalShiftY, wrap); newFrames.push({ layers: shiftedLayers }); } if (newFrames.length > 0) { state.frames.splice(state.currentFrameIndex + 1, 0, ...newFrames); } } else { const shiftedLayers = performPixelShift(sourceFrame.layers, dx, dy, wrap); state.frames[state.currentFrameIndex].layers = shiftedLayers; } } else { const shiftedLayers = performPixelShift(sourceFrame.layers, dx, dy, wrap); state.frames[state.currentFrameIndex].layers = shiftedLayers; } rebuildDrawingAreasDOM(); updateFramesUI(); saveState(); }
+    async function exportAnimationGIF() { if (state.frames.length < 1) { return alert("Animation requires at least 1 frame."); } const warningEl = $('#export-anim-warning'); const exportButtons = $$('#export-btn'); const includeLabels = $('#export-include-labels').checked; const frameDelay = 1000 / state.animation.fps; try { warningEl.textContent = `Processing GIF...`; warningEl.classList.remove('hidden'); exportButtons.forEach(b => b.disabled = true); const gif = new GIF({ workers: 2, quality: 10, workerScript: 'gif.worker.js' }); gif.on('progress', function(p) { warningEl.textContent = `Encoding GIF... ${Math.round(p * 100)}%`; }); const firstFrameCells = state.frames[0]?.layers[0]?.cells; for (const frame of state.frames) { const topLayer = frame.layers[0]; if (topLayer && topLayer.cells) { let cellsForExport = topLayer.cells; if (state.animation.stableMonths && includeLabels && firstFrameCells) { const hybridCells = JSON.parse(JSON.stringify(topLayer.cells)); for (let c = 0; c < COLS; c++) { for (let r = 0; r < ROWS; r++) { if (hybridCells[c][r] && firstFrameCells[c][r]) { hybridCells[c][r].dateISO = firstFrameCells[c][r].dateISO; } } } cellsForExport = hybridCells; } const frameCanvas = createFrameCanvas(cellsForExport, includeLabels); gif.addFrame(frameCanvas, { delay: frameDelay }); } } await new Promise((resolve, reject) => { gif.on('finished', (blob) => { try { const url = URL.createObjectURL(blob); downloadFile(url, 'animation.gif'); URL.revokeObjectURL(url); resolve(); } catch (e) { reject(e); } }); gif.on('abort', () => reject(new Error("GIF encoding aborted."))); gif.render(); }); } catch (error) { console.error("Failed to export GIF:", error); warningEl.textContent = "Error exporting GIF."; } finally { warningEl.classList.add('hidden'); exportButtons.forEach(b => b.disabled = false); } }
+    async function exportAnimationWEBP() { if (state.frames.length < 1) { return alert("Animation requires at least 1 frame."); } const warningEl = $('#export-anim-warning'); const exportButtons = $$('#export-btn'); const includeLabels = $('#export-include-labels').checked; const frameDuration = 1000 / state.animation.fps; try { warningEl.textContent = `Processing...`; warningEl.classList.remove('hidden'); exportButtons.forEach(b => b.disabled = true); const writer = new WebPWriter(); const firstFrameCells = state.frames[0]?.layers[0]?.cells; for (const frame of state.frames) { const topLayer = frame.layers[0]; if (topLayer && topLayer.cells) { let cellsForExport = topLayer.cells; if (state.animation.stableMonths && includeLabels && firstFrameCells) { const hybridCells = JSON.parse(JSON.stringify(topLayer.cells)); for (let c = 0; c < COLS; c++) { for (let r = 0; r < ROWS; r++) { if (hybridCells[c][r] && firstFrameCells[c][r]) { hybridCells[c][r].dateISO = firstFrameCells[c][r].dateISO; } } } cellsForExport = hybridCells; } const frameCanvas = createFrameCanvas(cellsForExport, includeLabels); writer.addFrame(frameCanvas.toDataURL('image/webp', {quality: 0.8}), { duration: frameDuration }); } } warningEl.textContent = "Encoding WEBP..."; const webpBlob = await writer.complete({ loop: 0 });  const url = URL.createObjectURL(webpBlob); downloadFile(url, 'animation.webp'); URL.revokeObjectURL(url); } catch (error) { console.error("Failed to export WEBP:", error); warningEl.textContent = "Error exporting WEBP."; } finally { warningEl.classList.add('hidden'); exportButtons.forEach(b => b.disabled = false); } }
+    function exportAnimation() { if (state.frames.length === 0) return; const warningEl = $('#export-anim-warning'); warningEl.textContent = "This will trigger multiple downloads."; warningEl.classList.remove('hidden'); const includeLabels = $('#export-include-labels').checked; const firstFrameCells = state.frames[0]?.layers[0]?.cells; const downloads = []; state.frames.forEach((frame, frameIdx) => { const topLayer = frame.layers[0]; if (topLayer) { let cellsForExport = topLayer.cells; if (state.animation.stableMonths && includeLabels && firstFrameCells) { const hybridCells = JSON.parse(JSON.stringify(topLayer.cells)); for (let c = 0; c < COLS; c++) { for (let r = 0; r < ROWS; r++) { if (hybridCells[c][r] && firstFrameCells[c][r]) { hybridCells[c][r].dateISO = firstFrameCells[c][r].dateISO; } } } cellsForExport = hybridCells; } downloads.push({ cells: cellsForExport, frameIdx }); } }); let downloadIndex = 0; const downloadNext = () => { if (downloadIndex >= downloads.length) { warningEl.classList.add('hidden'); return; } const { cells, frameIdx } = downloads[downloadIndex]; const frameCanvas = createFrameCanvas(cells, includeLabels); const dataURL = frameCanvas.toDataURL('image/png'); downloadFile(dataURL, `anim-frame-${String(frameIdx).padStart(3, '0')}.png`); downloadIndex++; setTimeout(downloadNext, 200); }; downloadNext(); }
+    function exportFrame(format = 'image/png') { const includeLabels = $('#export-include-labels').checked; const frameCanvas = createFrameCanvas(getActiveCells(), includeLabels); const dataURL = frameCanvas.toDataURL(format); const ext = format.split('/')[1]; downloadFile(dataURL, `frame-${state.currentFrameIndex}-layer-${state.activeLayerIndex}.${ext}`); }
+    function createFrameCanvas(cells, includeLabels) { const tempCanvas = document.createElement('canvas'); const tempCtx = tempCanvas.getContext('2d'); if (includeLabels) { drawFrameWithLabels(tempCtx, cells); } else { const exportCellSize = BASE_CELL_SIZE; const exportGap = GAP_SIZE; tempCanvas.width = (exportCellSize + exportGap) * COLS - exportGap; tempCanvas.height = (exportCellSize + exportGap) * ROWS - exportGap; tempCtx.imageSmoothingEnabled = false; tempCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg-color'); tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height); for (let c = 0; c < COLS; c++) { for (let r = 0; r < ROWS; r++) { const cell = cells[c][r]; if (!cell) continue; const x = c * (exportCellSize + exportGap); const y = r * (exportCellSize + exportGap); const mainColor = state.palette[cell.level]; drawCrispCell(tempCtx, x, y, exportCellSize, mainColor, cell.level); } } } return tempCanvas; }
+    function drawFrameWithLabels(tempCtx, cells) { const PADDING = 30; const exportCellSize = BASE_CELL_SIZE; const exportGap = GAP_SIZE; const gridW = (exportCellSize + exportGap) * COLS - exportGap; const gridH = (exportCellSize + exportGap) * ROWS - exportGap; tempCtx.canvas.width = gridW + PADDING; tempCtx.canvas.height = gridH + PADDING; tempCtx.imageSmoothingEnabled = false; tempCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg-color'); tempCtx.fillRect(0, 0, tempCtx.canvas.width, tempCtx.canvas.height); tempCtx.font = '10px ' + getComputedStyle(document.body).getPropertyValue('--font-family'); tempCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--muted-color'); tempCtx.textAlign = 'left'; tempCtx.textBaseline = 'middle'; const dayLabels = ["", "Mon", "", "Wed", "", "Fri", ""]; dayLabels.forEach((label, i) => { const y = PADDING + i * (exportCellSize + exportGap) + exportCellSize / 2; tempCtx.fillText(label, 0, y); }); const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]; let lastMonth = -1; for (let c = 0; c < COLS; c++) { const cell = cells[c]?.find(cell => cell); if (!cell) continue; const date = new Date(cell.dateISO + 'T00:00:00'); const month = date.getUTCMonth(); if (month !== lastMonth && date.getUTCDate() < 8) { tempCtx.fillText(months[month], PADDING + c * (exportCellSize + exportGap), 15); lastMonth = month; } } for (let c = 0; c < COLS; c++) { for (let r = 0; r < ROWS; r++) { const cell = cells[c][r]; if (!cell) continue; const x = PADDING + c * (exportCellSize + exportGap); const y = PADDING + r * (exportCellSize + exportGap); const mainColor = state.palette[cell.level]; drawCrispCell(tempCtx, x, y, exportCellSize, mainColor, cell.level); } } }
 
     init();
 });

@@ -112,18 +112,15 @@
         </aside>
 
         <div id="main-content">
-            <!-- This container will be dynamically filled with drawing areas by script.js -->
             <div id="drawing-area-container"></div>
             
             <div id="game-hud" class="hidden">
                 <div class="game-hud-item">Score: <span id="game-score">0</span></div>
                 <div class="game-controls">
+                    <button id="game-switch">Switch Game</button> <!-- ADD THIS BUTTON -->
                     <label>Difficulty: <input type="range" id="game-difficulty" min="1" max="10" value="3"></label>
-                    <button id="game-pause">Pause (P)</button>
+                    <button id="game-pause">Pause</button>
                     <button id="game-reset">Reset</button>
-                </div>
-                <div class="game-options">
-                    <label><input type="checkbox" id="game-write-heatmap" checked> Write explosions to heatmap</label>
                 </div>
             </div>
         </div>
@@ -216,6 +213,7 @@
 
     <script src="gif.js"></script>
     <script src="webp.js"></script>
+    <script src="game.js"></script>
     <script src="script.js"></script>
 </body>
 </html>
