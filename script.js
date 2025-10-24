@@ -389,7 +389,7 @@ document.addEventListener('DOMContentLoaded', () => {
             drawGrid(ctx, layer.cells);
             
             if (index === state.activeLayerIndex && state.game.active && activeGame) {
-                activeGame.render(ctx, cellSize, gap);
+                activeGame.render(ctx, cellSize, gap, drawCrispCell);
             }
             
             if (index === state.activeLayerIndex && selection.active) {
@@ -415,16 +415,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderAllMonthLabels() {
-        $$('.heatmap-labels-top, .heatmap-labels-left').forEach(el => {
-            el.style.display = state.game.active ? 'none' : 'flex';
-        });
-
-        if (state.game.active) return;
-        
         $$('.heatmap-labels-top').forEach((container, index) => {
             container.innerHTML = '';
             let cells;
-            if (state.animation.stableMonths) {
+
+            if (state.game.active) {
+                cells = editorFramesBackup?.[0]?.layers?.[0]?.cells;
+            } else if (state.animation.stableMonths) {
                 cells = state.frames[0]?.layers[0]?.cells;
             } else {
                 cells = state.frames[state.currentFrameIndex]?.layers[index]?.cells;

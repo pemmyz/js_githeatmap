@@ -62,12 +62,13 @@ class SidewaysTetris {
         }
     }
     
-    render(ctx, cellSize, gap) {
+    render(ctx, cellSize, gap, drawCellFn) {
         // Draw merged pieces
         for (let r = 0; r < GAME_ROWS; r++) {
             for (let c = 0; c < GAME_COLS; c++) {
-                if (this.grid[r][c] !== 0) {
-                    this.drawBlock(ctx, r, c, this.grid[r][c], cellSize, gap);
+                const colorIndex = this.grid[r][c];
+                if (colorIndex !== 0) {
+                    drawCellFn(ctx, c * (cellSize + gap), r * (cellSize + gap), cellSize, this.palette[colorIndex], colorIndex);
                 }
             }
         }
@@ -76,7 +77,10 @@ class SidewaysTetris {
             this.piece.shape.forEach((row, r) => {
                 row.forEach((value, c) => {
                     if (value !== 0) {
-                        this.drawBlock(ctx, this.piece.row + r, this.piece.col + c, this.piece.colorIndex, cellSize, gap);
+                        const gridX = this.piece.col + c;
+                        const gridY = this.piece.row + r;
+                        const colorIndex = this.piece.colorIndex;
+                        drawCellFn(ctx, gridX * (cellSize + gap), gridY * (cellSize + gap), cellSize, this.palette[colorIndex], colorIndex);
                     }
                 });
             });
@@ -89,16 +93,6 @@ class SidewaysTetris {
     checkCollision(piece, rowOffset, colOffset) { for (let r = 0; r < piece.shape.length; r++) { for (let c = 0; c < piece.shape[r].length; c++) { if (piece.shape[r][c] !== 0) { const newRow = piece.row + r + rowOffset; const newCol = piece.col + c + colOffset; if (newRow < 0 || newRow >= GAME_ROWS || newCol >= GAME_COLS) return true; if (newCol >= 0 && this.grid[newRow] && this.grid[newRow][newCol] !== 0) return true; } } } return false; }
     mergePiece() { this.piece.shape.forEach((row, r) => { row.forEach((value, c) => { if (value !== 0) { const gridRow = this.piece.row + r; const gridCol = this.piece.col + c; if (gridRow >= 0 && gridRow < GAME_ROWS && gridCol >= 0 && gridCol < GAME_COLS) this.grid[gridRow][gridCol] = this.piece.colorIndex; } }); }); }
     clearColumns() { let columnsCleared = 0; for (let c = GAME_COLS - 1; c >= 0; c--) { let isFull = true; for (let r = 0; r < GAME_ROWS; r++) { if (this.grid[r][c] === 0) { isFull = false; break; } } if (isFull) { columnsCleared++; for (let r = 0; r < GAME_ROWS; r++) { this.grid[r].splice(c, 1); this.grid[r].unshift(0); } } } if (columnsCleared > 0) { const points = [0, 40, 100, 300, 1200]; this.score += points[columnsCleared] || points[4]; } }
-    
-    drawBlock(ctx, r, c, colorIndex, cellSize, gap) {
-        const x = c * (cellSize + gap);
-        const y = r * (cellSize + gap);
-        ctx.fillStyle = this.palette[colorIndex];
-        ctx.fillRect(x, y, cellSize, cellSize);
-        ctx.strokeStyle = 'rgba(0,0,0,0.3)';
-        ctx.lineWidth = 1;
-        ctx.strokeRect(x + 0.5, y + 0.5, cellSize - 1, cellSize - 1);
-    }
 }
 
 // --- SNAKE GAME ---
@@ -154,21 +148,15 @@ class SnakeGame {
         return false;
     }
 
-    render(ctx, cellSize, gap) {
-        // Use Level 1 color from the palette for food
-        this.drawBlock(ctx, this.food.y, this.food.x, this.palette[1], cellSize, gap);
+    render(ctx, cellSize, gap, drawCellFn) {
+        // Draw food (Level 1 color)
+        const foodLevel = 1;
+        drawCellFn(ctx, this.food.x * (cellSize + gap), this.food.y * (cellSize + gap), cellSize, this.palette[foodLevel], foodLevel);
 
-        // Use Level 4 for head, Level 3 for body
+        // Draw snake
         this.snake.forEach((part, index) => {
-            const color = (index === 0) ? this.palette[4] : this.palette[3];
-            this.drawBlock(ctx, part.y, part.x, color, cellSize, gap);
+            const level = (index === 0) ? 4 : 3; // Head is Level 4, body is Level 3
+            drawCellFn(ctx, part.x * (cellSize + gap), part.y * (cellSize + gap), cellSize, this.palette[level], level);
         });
-    }
-
-    drawBlock(ctx, r, c, color, cellSize, gap) {
-        const x = c * (cellSize + gap);
-        const y = r * (cellSize + gap);
-        ctx.fillStyle = color;
-        ctx.fillRect(x, y, cellSize, cellSize);
     }
 }
