@@ -28,7 +28,6 @@ class SidewaysTetris {
     spawnNewPiece() {
         const type = SHAPE_KEYS[Math.floor(Math.random() * SHAPE_KEYS.length)];
         const shape = SHAPES[type];
-        // Use a random color index from the palette (levels 1-4)
         const colorIndex = Math.floor(Math.random() * 4) + 1;
         this.piece = {
             shape: shape, colorIndex: colorIndex,
@@ -63,24 +62,22 @@ class SidewaysTetris {
     }
     
     render(ctx, cellSize, gap, drawCellFn) {
-        // Draw merged pieces
         for (let r = 0; r < GAME_ROWS; r++) {
             for (let c = 0; c < GAME_COLS; c++) {
-                const colorIndex = this.grid[r][c];
-                if (colorIndex !== 0) {
-                    drawCellFn(ctx, c * (cellSize + gap), r * (cellSize + gap), cellSize, this.palette[colorIndex], colorIndex);
+                const level = this.grid[r][c];
+                if (level !== 0) {
+                    drawCellFn(ctx, c * (cellSize + gap), r * (cellSize + gap), cellSize, this.palette[level], level);
                 }
             }
         }
-        // Draw active piece
         if (this.piece) {
+            const level = this.piece.colorIndex;
             this.piece.shape.forEach((row, r) => {
                 row.forEach((value, c) => {
                     if (value !== 0) {
                         const gridX = this.piece.col + c;
                         const gridY = this.piece.row + r;
-                        const colorIndex = this.piece.colorIndex;
-                        drawCellFn(ctx, gridX * (cellSize + gap), gridY * (cellSize + gap), cellSize, this.palette[colorIndex], colorIndex);
+                        drawCellFn(ctx, gridX * (cellSize + gap), gridY * (cellSize + gap), cellSize, this.palette[level], level);
                     }
                 });
             });
@@ -89,8 +86,42 @@ class SidewaysTetris {
 
     move(dir) { if (!this.checkCollision(this.piece, dir, 0)) this.piece.row += dir; }
     hardDrop() { if (this.gameOver) return; while (!this.checkCollision(this.piece, 0, 1)) this.piece.col++; this.mergePiece(); this.clearColumns(); this.spawnNewPiece(); }
-    rotate() { if (this.gameOver) return; const originalShape = this.piece.shape; const rotated = this.piece.shape[0].map((_, colIndex) => this.piece.shape.map(row => row[colIndex]).reverse()); this.piece.shape = rotated; let offset = 0, kick = 0; while (this.checkCollision(this.piece, 0, 0)) { kick = (offset >= 0) ? (offset + 1) : (offset - 1); offset = -offset; this.piece.row += kick; if (Math.abs(kick) > this.piece.shape.length + 1) { this.piece.shape = originalShape; this.piece.row -= kick; return; } } }
-    checkCollision(piece, rowOffset, colOffset) { for (let r = 0; r < piece.shape.length; r++) { for (let c = 0; c < piece.shape[r].length; c++) { if (piece.shape[r][c] !== 0) { const newRow = piece.row + r + rowOffset; const newCol = piece.col + c + colOffset; if (newRow < 0 || newRow >= GAME_ROWS || newCol >= GAME_COLS) return true; if (newCol >= 0 && this.grid[newRow] && this.grid[newRow][newCol] !== 0) return true; } } } return false; }
+    
+    rotate() {
+        if (this.gameOver || !this.piece) return;
+
+        const originalCol = this.piece.col;
+        const rotatedShape = this.piece.shape[0].map((_, colIndex) => this.piece.shape.map(row => row[colIndex]).reverse());
+
+        // A simple set of wall kick tests [colOffset, rowOffset]
+        const kickTests = [
+            [0, 0],   // No kick
+            [-1, 0],  // Kick left 1
+            [1, 0],   // Kick right 1
+            [-2, 0],  // Kick left 2 (for I-piece)
+            [2, 0]    // Kick right 2 (for I-piece)
+        ];
+
+        for (const [colKick, rowKick] of kickTests) {
+            const tempPiece = {
+                ...this.piece,
+                shape: rotatedShape,
+                col: originalCol + colKick,
+                row: this.piece.row + rowKick // Use current row + potential vertical kick
+            };
+
+            if (!this.checkCollision(tempPiece, 0, 0)) {
+                // Found a valid position, apply rotation and kick
+                this.piece.shape = rotatedShape;
+                this.piece.col = tempPiece.col;
+                this.piece.row = tempPiece.row;
+                return; // Rotation successful
+            }
+        }
+        // If no kick works, do nothing. The piece remains un-rotated.
+    }
+
+    checkCollision(piece, rowOffset, colOffset) { for (let r = 0; r < piece.shape.length; r++) { for (let c = 0; c < piece.shape[r].length; c++) { if (piece.shape[r][c] !== 0) { const newRow = piece.row + r + rowOffset; const newCol = piece.col + c + colOffset; if (newRow < 0 || newRow >= GAME_ROWS || newCol >= GAME_COLS || newCol < 0) return true; if (this.grid[newRow] && this.grid[newRow][newCol] !== 0) return true; } } } return false; }
     mergePiece() { this.piece.shape.forEach((row, r) => { row.forEach((value, c) => { if (value !== 0) { const gridRow = this.piece.row + r; const gridCol = this.piece.col + c; if (gridRow >= 0 && gridRow < GAME_ROWS && gridCol >= 0 && gridCol < GAME_COLS) this.grid[gridRow][gridCol] = this.piece.colorIndex; } }); }); }
     clearColumns() { let columnsCleared = 0; for (let c = GAME_COLS - 1; c >= 0; c--) { let isFull = true; for (let r = 0; r < GAME_ROWS; r++) { if (this.grid[r][c] === 0) { isFull = false; break; } } if (isFull) { columnsCleared++; for (let r = 0; r < GAME_ROWS; r++) { this.grid[r].splice(c, 1); this.grid[r].unshift(0); } } } if (columnsCleared > 0) { const points = [0, 40, 100, 300, 1200]; this.score += points[columnsCleared] || points[4]; } }
 }
@@ -149,13 +180,11 @@ class SnakeGame {
     }
 
     render(ctx, cellSize, gap, drawCellFn) {
-        // Draw food (Level 1 color)
         const foodLevel = 1;
         drawCellFn(ctx, this.food.x * (cellSize + gap), this.food.y * (cellSize + gap), cellSize, this.palette[foodLevel], foodLevel);
 
-        // Draw snake
         this.snake.forEach((part, index) => {
-            const level = (index === 0) ? 4 : 3; // Head is Level 4, body is Level 3
+            const level = (index === 0) ? 4 : 3;
             drawCellFn(ctx, part.x * (cellSize + gap), part.y * (cellSize + gap), cellSize, this.palette[level], level);
         });
     }

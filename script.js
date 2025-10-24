@@ -145,8 +145,8 @@ document.addEventListener('DOMContentLoaded', () => {
             if (level === 0) {
                 highlightColor = lightenColor(mainColor, 30);
             } else {
-                const level1Color = state.palette[1];
-                highlightColor = lightenColor(level1Color, 30);
+                // For Level 1 and higher, use pure white for the highlight in light mode
+                highlightColor = '#FFFFFF';
             }
         }
 
@@ -415,13 +415,16 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function renderAllMonthLabels() {
+        $$('.heatmap-labels-top, .heatmap-labels-left').forEach(el => {
+            el.style.display = state.game.active ? 'none' : 'flex';
+        });
+
+        if (state.game.active) return;
+        
         $$('.heatmap-labels-top').forEach((container, index) => {
             container.innerHTML = '';
             let cells;
-
-            if (state.game.active) {
-                cells = editorFramesBackup?.[0]?.layers?.[0]?.cells;
-            } else if (state.animation.stableMonths) {
+            if (state.animation.stableMonths) {
                 cells = state.frames[0]?.layers[0]?.cells;
             } else {
                 cells = state.frames[state.currentFrameIndex]?.layers[index]?.cells;
