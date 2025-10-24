@@ -1484,22 +1484,27 @@ document.addEventListener('DOMContentLoaded', () => {
             if (state.animation.lastFrameTime >= frameDuration) {
                 state.animation.lastFrameTime %= frameDuration;
                 
-                let nextLayer = state.activeLayerIndex + 1;
-                let nextFrame = state.currentFrameIndex;
-                const numLayersInCurrentFrame = state.frames[nextFrame].layers.length;
+                // Animation cycles through frames, always showing the first layer (index 0).
+                if (state.frames.length === 0) return;
 
-                if (nextLayer >= numLayersInCurrentFrame) {
-                    nextLayer = 0;
-                    nextFrame++;
-                    if (nextFrame >= state.frames.length) {
-                        nextFrame = 0;
-                    }
-                }
+                const nextFrameIndex = (state.currentFrameIndex + 1) % state.frames.length;
+                
+                const frameChanged = state.currentFrameIndex !== nextFrameIndex;
+                const layerIsNotFirst = state.activeLayerIndex !== 0;
 
-                if (state.currentFrameIndex !== nextFrame) {
-                    selectFrame(nextFrame);
+                if (frameChanged) {
+                    // If the frame changes, we update both frame and layer in the state,
+                    // then do a full UI rebuild for the new frame.
+                    state.currentFrameIndex = nextFrameIndex;
+                    state.activeLayerIndex = 0;
+                    rebuildDrawingAreasDOM();
+                    updateUIFromState();
+                    saveState();
+                } else if (layerIsNotFirst) {
+                    // If only the layer needs to be reset (on the first tick of animation),
+                    // we can do a lighter UI update.
+                    setActiveLayer(0);
                 }
-                setActiveLayer(nextLayer);
             }
         }
 
