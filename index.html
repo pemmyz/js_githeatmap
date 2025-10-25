@@ -15,7 +15,7 @@
             </div>
         </div>
         <div class="header-right">
-            <button id="help-btn" aria-label="Show Help" title="Show Help (H)">❓</button>
+            <button id="help-btn" aria-label="Show Help" title="Show Help (H)">❓Help</button>
             <button id="game-mode-toggle" aria-label="Toggle Game Mode" title="Toggle Game Mode (T)">🎮 Game</button>
             <button id="theme-toggle" aria-label="Toggle Dark/Light Theme" title="Toggle Dark/Light Theme (V)">☀️</button>
         </div>
@@ -228,30 +228,52 @@
         </section>
     
         <section class="help-section">
-            <h3>Panel Explanations</h3>
+            <h3>Left Panel Explanations</h3>
+            <h4>View</h4>
+            <ul>
+                <li><strong>100% / 150% / 200%:</strong> Sets a fixed zoom level for the drawing canvas.</li>
+                <li><strong>Fit Width:</strong> Automatically resizes the drawing canvas to fit the available horizontal space.</li>
+            </ul>
+            <h4>Data</h4>
+            <p>This section handles data for the <strong>entire project</strong>. The JSON format is preferred for saving and loading your work as it includes all frames, layers, and settings.</p>
+            <ul>
+                <li><strong>Import/Export JSON:</strong> Saves or loads the entire state of your project, including all frames, layers, colors, and thresholds. Use this for complete backups or transferring your work.</li>
+                <li><strong>Import/Export CSV:</strong> Imports or exports a simple `date,count` format. This only affects the currently active layer and is useful for transferring contribution data from other sources like spreadsheets.</li>
+            </ul>
+        </section>
+
+        <section class="help-section">
+            <h3>Right Panel Explanations</h3>
             <h4>Animation</h4>
             <ul>
                 <li><strong>FPS:</strong> Frames Per Second. Higher is faster.</li>
                 <li><strong>Onion Skin:</strong> Shows a faint outline of the previous frame on the canvas to help with animation.</li>
                 <li><strong>Stable Months:</strong> Keeps the month labels (Jan, Feb, etc.) fixed to the first frame's dates during animation. Uncheck for scrolling month labels.</li>
             </ul>
-            <h4>Frames</h4>
+            <h4>Frames & Layers</h4>
+            <p>An animation is made of <strong>Frames</strong>. Each frame can have multiple <strong>Layers</strong>, though most animations only need one layer.</p>
             <ul>
                 <li><strong>[+]:</strong> New Blank Frame.</li>
                 <li><strong>[📄]:</strong> Duplicate the currently selected frame.</li>
                 <li><strong>[+🖼️]:</strong> Adds the currently active *layer* as a new frame. Useful for building animations from multiple layers.</li>
-                <li><strong>[🗑️]:</strong> Delete the selected frame.</li>
-                <li><strong>Shift Arrows (&uarr;&darr;&larr;&rarr;):</strong> Move the entire content of the current frame's layers.
+                <li><strong>Shift Arrows (&uarr;&darr;&larr;&rarr;):</strong> Move the entire content of the current frame. This is powerful when combined with the options below:
                     <ul>
-                        <li><strong>Wrap:</strong> When checked, content moved off one edge reappears on the opposite side.</li>
-                        <li><strong>Auto Wrap Animation:</strong> Creates a full animation sequence of the shifting content. Great for scrolling text or patterns.</li>
+                        <li><strong>Wrap:</strong> When checked, any content moved off one edge of the canvas will wrap around and reappear on the opposite side.</li>
+                        <li><strong>Auto Wrap Animation:</strong> When checked, pressing a shift arrow will automatically generate all the necessary frames to create a full, looping animation of the content scrolling across the canvas and returning to its starting position. This is perfect for creating smooth scrolling backgrounds or marquees from a single drawing.</li>
                     </ul>
                 </li>
             </ul>
-            <h4>Layers</h4>
-            <p>You can draw on multiple layers within a single frame. This is advanced usage, useful for separating elements. Most animations will only need one layer per frame.</p>
+            <h4>Layer Data</h4>
             <ul>
-                <li><strong>Add Draw Area:</strong> Adds a new layer to *all* existing frames.</li>
+                <li><strong>Import / Export Layer:</strong> This opens a text box with the JSON data for only the <strong>single, currently active layer</strong>. This is different from the main Data panel; use this to copy/paste a specific drawing between projects.</li>
+            </ul>
+            <h4>Export Animation</h4>
+            <ul>
+                <li><strong>Current as PNG/WEBP:</strong> Saves a static image of what you currently see on the active layer.</li>
+                <li><strong>Animation (PNGs):</strong> Exports every frame of your animation as a separate numbered PNG file.</li>
+                <li><strong>Animation (GIF):</strong> Combines all frames into a single, looping animated GIF file. This is a classic format that is widely supported.</li>
+                <li><strong>Animation (WEBP):</strong> DOES NOT CURRENTLY FUNCTION! Combines all frames into a single, looping animated WEBP file. This is a modern format that offers higher quality and smaller file sizes than GIF, but may not be supported on older websites or apps.</li>
+                <li><strong>Include Labels:</strong> When checked, the exported image(s) or animation will include the day and month labels. Uncheck to export only the pixel grid.</li>
             </ul>
         </section>
     
