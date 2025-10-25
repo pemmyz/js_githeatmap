@@ -23,6 +23,9 @@ document.addEventListener('DOMContentLoaded', () => {
     const layerDataTextarea = $('#layer-data-textarea');
     const layerDataApplyBtn = $('#layer-data-apply');
     const layerDataCloseBtn = $('#layer-data-close');
+    const helpBtn = $('#help-btn');
+    const helpModal = $('#help-modal');
+    const helpModalCloseBtn = $('#help-modal-close');
 
 
     // --- DYNAMIC INSTANCES ---
@@ -601,6 +604,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- MODAL LOGIC ---
     function openLayerDataModal() {
+        closeActiveModal();
         const activeCells = getActiveCells();
         if (!activeCells) {
             alert("No active layer to export.");
@@ -617,17 +621,43 @@ document.addEventListener('DOMContentLoaded', () => {
         layerDataModal.classList.add('hidden');
     }
 
+    function openHelpModal() {
+        closeActiveModal();
+        modalBackdrop.classList.remove('hidden');
+        helpModal.classList.remove('hidden');
+    }
+
+    function closeHelpModal() {
+        modalBackdrop.classList.add('hidden');
+        helpModal.classList.add('hidden');
+    }
+
+    function toggleHelpModal() {
+        if (helpModal.classList.contains('hidden')) {
+            openHelpModal();
+        } else {
+            closeHelpModal();
+        }
+    }
+
+    function closeActiveModal() {
+        closeLayerDataModal();
+        closeHelpModal();
+    }
+
     // --- EVENT LISTENERS ---
     function setupEventListeners() {
         window.addEventListener('resize', debounce(resizeAndRenderAll, 200));
         themeToggle.addEventListener('click', toggleTheme);
         gameModeToggle.addEventListener('click', toggleGameMode);
+        helpBtn.addEventListener('click', openHelpModal);
         
         $('#add-layer-btn').addEventListener('click', addLayer);
 
         layerDataBtn.addEventListener('click', openLayerDataModal);
         layerDataCloseBtn.addEventListener('click', closeLayerDataModal);
-        modalBackdrop.addEventListener('click', closeLayerDataModal);
+        modalBackdrop.addEventListener('click', closeActiveModal);
+        helpModalCloseBtn.addEventListener('click', closeHelpModal);
         layerDataApplyBtn.addEventListener('click', () => {
             const dataToLoad = layerDataTextarea.value;
             try {
@@ -793,7 +823,12 @@ document.addEventListener('DOMContentLoaded', () => {
     
     const keysPressed = {};
     function handleKeyDown(e) {
-        if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') return;
+        if (document.activeElement.tagName === 'INPUT' || document.activeElement.tagName === 'TEXTAREA') {
+            if (e.key.toLowerCase() === 'escape') {
+                 closeActiveModal();
+            }
+            return;
+        }
         
         const key = e.key.toLowerCase();
         keysPressed[key] = true;
@@ -823,13 +858,17 @@ document.addEventListener('DOMContentLoaded', () => {
             'g': () => { state.showGrid = !state.showGrid; renderAllLayers(); },
             't': () => toggleGameMode(),
             'v': toggleTheme,
+            'h': toggleHelpModal,
         };
-
-        if (keyMap[e.key]) { e.preventDefault(); keyMap[e.key](); updateUIFromState(); }
-        if (e.ctrlKey || e.metaKey) {
-            if (e.key === 'z') { e.preventDefault(); undo(); }
-            if (e.key === 'y') { e.preventDefault(); redo(); }
+        
+        if (key === 'escape') {
+            e.preventDefault();
+            closeActiveModal();
         }
+
+        if (keyMap[key]) { e.preventDefault(); keyMap[key](); updateUIFromState(); }
+        if ((e.ctrlKey || e.metaKey) && !e.shiftKey && key === 'z') { e.preventDefault(); undo(); }
+        if ((e.ctrlKey || e.metaKey) && (key === 'y' || (e.shiftKey && key === 'z'))) { e.preventDefault(); redo(); }
     }
 
     function applyTheme(theme) {

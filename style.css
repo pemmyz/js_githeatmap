@@ -313,7 +313,7 @@ label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.875rem
 .game-hud-item { font-weight: bold; }
 .game-controls, .game-options { display: flex; align-items: center; gap: 12px; }
 
-/* --- NEW: Modal Styles --- */
+/* --- Modal Styles --- */
 #modal-backdrop {
     position: fixed;
     top: 0; left: 0;
@@ -361,6 +361,70 @@ label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.875rem
     display: flex;
     justify-content: flex-end;
     gap: 8px;
+}
+
+#help-modal {
+    position: fixed;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 90%;
+    max-width: 800px;
+    max-height: 90vh;
+    background-color: var(--panel-bg);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    padding: 24px;
+    z-index: 101;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+    overflow-y: auto;
+}
+
+#help-modal h2 {
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border-color);
+    padding-bottom: 8px;
+}
+
+.help-section h3 {
+    font-size: 1rem;
+    color: var(--fg-color);
+    text-transform: none;
+    letter-spacing: normal;
+    margin-bottom: 12px;
+}
+.help-section h4 {
+    font-size: 0.9rem;
+    color: var(--muted-color);
+    margin-top: 12px;
+    margin-bottom: 6px;
+}
+
+.help-section p, .help-section li {
+    font-size: 0.9rem;
+    line-height: 1.6;
+}
+
+.help-section ul, .help-section ol {
+    padding-left: 20px;
+    margin-bottom: 12px;
+}
+
+.help-section li {
+    margin-bottom: 8px;
+}
+.help-section li ul {
+    margin-top: 8px;
+    margin-bottom: 0;
+}
+.help-section strong {
+    background-color: color-mix(in srgb, var(--accent-color) 15%, transparent);
+    padding: 2px 4px;
+    border-radius: 4px;
+    font-weight: bold;
 }
 
 .hidden { display: none !important; }

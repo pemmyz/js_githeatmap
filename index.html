@@ -15,6 +15,7 @@
             </div>
         </div>
         <div class="header-right">
+            <button id="help-btn" aria-label="Show Help" title="Show Help (H)">❓</button>
             <button id="game-mode-toggle" aria-label="Toggle Game Mode" title="Toggle Game Mode (T)">🎮 Game</button>
             <button id="theme-toggle" aria-label="Toggle Dark/Light Theme" title="Toggle Dark/Light Theme (V)">☀️</button>
         </div>
@@ -117,7 +118,7 @@
             <div id="game-hud" class="hidden">
                 <div class="game-hud-item">Score: <span id="game-score">0</span></div>
                 <div class="game-controls">
-                    <button id="game-switch">Switch Game</button> <!-- ADD THIS BUTTON -->
+                    <button id="game-switch">Switch Game</button>
                     <label>Difficulty: <input type="range" id="game-difficulty" min="1" max="10" value="3"></label>
                     <button id="game-pause">Pause</button>
                     <button id="game-reset">Reset</button>
@@ -197,7 +198,7 @@
     </main>
 
     <footer>
-        <p>Shortcuts: [1-5] Levels | [P] Pencil | [R] Rect | [E] Eraser | [I] Picker | [A] Add/Set | [G] Grid | [T] Game | [V] Theme | [Ctrl+Z] Undo | [Ctrl+Y] Redo</p>
+        <p>Shortcuts: [1-5] Levels | [P] Pencil | [R] Rect | [E] Eraser | [I] Picker | [A] Add/Set | [G] Grid | [T] Game | [V] Theme | [H] Help | [Ctrl+Z] Undo | [Ctrl+Y] Redo</p>
     </footer>
 
     <div id="modal-backdrop" class="hidden"></div>
@@ -208,6 +209,54 @@
         <div class="modal-actions">
             <button id="layer-data-apply">Apply to Current Layer</button>
             <button id="layer-data-close">Close</button>
+        </div>
+    </div>
+
+    <div id="help-modal" class="panel-section hidden">
+        <h2>Help & Quick Start ✨</h2>
+        
+        <section class="help-section">
+            <h3>Quick Start: Your First Animation</h3>
+            <ol>
+                <li>Use the <strong>Pencil</strong> tool and <strong>Brush</strong> levels to draw on the heatmap. This is your first frame.</li>
+                <li>In the "Frames" panel on the right, click the <strong>Duplicate Frame</strong> button (📄).</li>
+                <li>A new frame appears, selected. Make a small change to your drawing on the heatmap.</li>
+                <li>Repeat steps 2 and 3 a few times to create more frames.</li>
+                <li>In the "Animation" panel, click the <strong>Play</strong> button (▶️) to see your animation!</li>
+                <li>Adjust the <strong>FPS</strong> slider to change the speed.</li>
+            </ol>
+        </section>
+    
+        <section class="help-section">
+            <h3>Panel Explanations</h3>
+            <h4>Animation</h4>
+            <ul>
+                <li><strong>FPS:</strong> Frames Per Second. Higher is faster.</li>
+                <li><strong>Onion Skin:</strong> Shows a faint outline of the previous frame on the canvas to help with animation.</li>
+                <li><strong>Stable Months:</strong> Keeps the month labels (Jan, Feb, etc.) fixed to the first frame's dates during animation. Uncheck for scrolling month labels.</li>
+            </ul>
+            <h4>Frames</h4>
+            <ul>
+                <li><strong>[+]:</strong> New Blank Frame.</li>
+                <li><strong>[📄]:</strong> Duplicate the currently selected frame.</li>
+                <li><strong>[+🖼️]:</strong> Adds the currently active *layer* as a new frame. Useful for building animations from multiple layers.</li>
+                <li><strong>[🗑️]:</strong> Delete the selected frame.</li>
+                <li><strong>Shift Arrows (&uarr;&darr;&larr;&rarr;):</strong> Move the entire content of the current frame's layers.
+                    <ul>
+                        <li><strong>Wrap:</strong> When checked, content moved off one edge reappears on the opposite side.</li>
+                        <li><strong>Auto Wrap Animation:</strong> Creates a full animation sequence of the shifting content. Great for scrolling text or patterns.</li>
+                    </ul>
+                </li>
+            </ul>
+            <h4>Layers</h4>
+            <p>You can draw on multiple layers within a single frame. This is advanced usage, useful for separating elements. Most animations will only need one layer per frame.</p>
+            <ul>
+                <li><strong>Add Draw Area:</strong> Adds a new layer to *all* existing frames.</li>
+            </ul>
+        </section>
+    
+        <div class="modal-actions">
+            <button id="help-modal-close">Close</button>
         </div>
     </div>
 
