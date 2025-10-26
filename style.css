@@ -181,6 +181,11 @@ button, select {
     cursor: pointer;
     transition: background-color 0.1s;
 }
+
+select option:disabled {
+    color: var(--muted-color);
+}
+
 button:hover, select:hover { background-color: var(--button-hover-bg); }
 button:focus, select:focus, input:focus {
     outline: none;
