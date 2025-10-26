@@ -2,7 +2,7 @@
 
 # 🎨 GitHub Contributions Heatmap Editor & Game Suite
 
-Turn the classic GitHub contributions calendar into a full-on pixel art editor, animation studio, and even a playable game console — all inside the browser.
+Turn the classic GitHub contributions calendar/heatmap into a full-on pixel art editor, animation studio, and even a playable game console — all inside the browser.
 
 - 🎨 Paint directly on a 53×7 "contribution heatmap" grid  
 - 🎬 Animate it frame-by-frame, export GIF/PNGs/WEBP  
