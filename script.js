@@ -557,6 +557,16 @@ document.addEventListener('DOMContentLoaded', () => {
         ctx.strokeRect(x - 1, y - 1, w + 2, h + 2);
     }
 
+    // --- PALETTE ---
+    function invertPalette() {
+        if (state.game.active) return;
+        state.palette.reverse();
+        updatePaletteUI();
+        renderAllLayers();
+        updateFramesUI(); // Redraw thumbnails with new colors
+        saveState();
+    }
+
     // --- LAYERS LOGIC ---
     function addLayer() {
         pushUndoState();
@@ -769,6 +779,7 @@ document.addEventListener('DOMContentLoaded', () => {
         $('#frame-move-down').addEventListener('click', () => shiftFrame(0, 1));
         $('#frame-move-left').addEventListener('click', () => shiftFrame(-1, 0));
         $('#frame-move-right').addEventListener('click', () => shiftFrame(1, 0));
+        $('#invert-palette-btn').addEventListener('click', invertPalette);
         
         $('#export-btn').addEventListener('click', () => {
             const selectedFormat = $('#export-format-select').value;
