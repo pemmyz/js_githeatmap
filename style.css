@@ -218,7 +218,11 @@ label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.875rem
 .level-btn[data-level="3"] { background-color: var(--level-3-bg); }
 .level-btn[data-level="4"] { background-color: var(--level-4-bg); }
 
-.palette-editor, .thresholds, .io-buttons, .frame-actions, .image-legend-actions, .zoom-controls, .layer-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.palette-editor, .thresholds, .io-buttons, .frame-actions, .image-legend-actions, .zoom-controls, .layer-actions, .system-actions { 
+    display: flex; 
+    flex-wrap: wrap; 
+    gap: 8px; 
+}
 
 .palette-actions {
     display: flex;
@@ -230,7 +234,7 @@ label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.875rem
     flex-grow: 1;
 }
 
-.image-legend-actions {
+.image-legend-actions, .system-actions {
     flex-direction: column;
     align-items: stretch;
 }
