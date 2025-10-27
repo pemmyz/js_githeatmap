@@ -220,6 +220,16 @@ label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.875rem
 
 .palette-editor, .thresholds, .io-buttons, .frame-actions, .image-legend-actions, .zoom-controls, .layer-actions { display: flex; flex-wrap: wrap; gap: 8px; }
 
+.palette-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 8px;
+    align-items: center;
+}
+.palette-actions select {
+    flex-grow: 1;
+}
+
 .image-legend-actions {
     flex-direction: column;
     align-items: stretch;
@@ -290,10 +300,6 @@ label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.875rem
     display: flex;
     flex-direction: column;
     gap: 4px;
-}
-
-.extra-frame-actions {
-    margin-top: 8px;
 }
 
 .export-options { margin-top: 8px; }

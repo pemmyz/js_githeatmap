@@ -23,7 +23,6 @@
 
     <main>
         <aside id="tools-panel">
-            <!-- Tools, Brush, Palette, Thresholds, Data, View sections remain the same -->
             <section class="panel-section">
                 <h3>Tools</h3>
                 <div class="toolbar">
@@ -59,11 +58,14 @@
                     <input type="color" id="palette-color-3" data-level="3" title="Level 3 Color">
                     <input type="color" id="palette-color-4" data-level="4" title="Level 4 Color">
                 </div>
-                <select id="palette-preset" title="Choose a color preset">
-                    <option value="classic">Classic Green</option>
-                    <option value="dark">Dark Green</option>
-                    <option value="arc">Arc Green</option>
-                </select>
+                <div class="palette-actions">
+                    <select id="palette-preset" title="Choose a color preset">
+                        <option value="classic">Classic Green</option>
+                        <option value="dark">Dark Green</option>
+                        <option value="arc">Arc Green</option>
+                    </select>
+                    <button id="invert-palette-btn" title="Invert all palette colors (light becomes dark)">Invert Palette</button>
+                </div>
             </section>
 
             <section class="panel-section">
@@ -171,9 +173,6 @@
                             <input type="checkbox" id="frame-shift-animate"> Auto Wrap Animation
                         </label>
                     </div>
-                </div>
-                <div class="extra-frame-actions">
-                    <button id="invert-palette-btn" title="Invert all palette colors (light becomes dark)">Invert Palette</button>
                 </div>
             </section>
             <section class="panel-section">

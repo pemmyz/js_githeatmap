@@ -726,6 +726,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 renderAllLayers();
             }
         });
+        $('#invert-palette-btn').addEventListener('click', invertPalette);
         $('.thresholds').addEventListener('input', e => {
             if (e.target.matches('input[type="number"]')) {
                 const level = parseInt(e.target.dataset.level);
@@ -779,7 +780,6 @@ document.addEventListener('DOMContentLoaded', () => {
         $('#frame-move-down').addEventListener('click', () => shiftFrame(0, 1));
         $('#frame-move-left').addEventListener('click', () => shiftFrame(-1, 0));
         $('#frame-move-right').addEventListener('click', () => shiftFrame(1, 0));
-        $('#invert-palette-btn').addEventListener('click', invertPalette);
         
         $('#export-btn').addEventListener('click', () => {
             const selectedFormat = $('#export-format-select').value;
@@ -934,13 +934,20 @@ document.addEventListener('DOMContentLoaded', () => {
     function downloadFile(data, filename) { const link = document.createElement('a'); link.href = data; link.download = filename; link.click(); }
     
     function setPanelsInteractive(isInteractive) {
-        const panels = ['#tools-panel', '#timeline-panel'];
-        panels.forEach(selector => {
-            const panel = $(selector);
-            if (panel) {
-                panel.style.opacity = isInteractive ? '1' : '0.5';
-                panel.style.pointerEvents = isInteractive ? 'auto' : 'none';
-            }
+        const allSections = $$('#tools-panel .panel-section, #timeline-panel .panel-section');
+
+        allSections.forEach(section => {
+            const header = section.querySelector('h3');
+            const isViewSection = header && header.textContent === 'View';
+            
+            // Determine if the section should be disabled.
+            // It should be disabled if we are NOT interactive (i.e., in game mode) AND it's NOT the view section.
+            const shouldBeDisabled = !isInteractive && !isViewSection;
+
+            section.style.opacity = shouldBeDisabled ? '0.5' : '1';
+            section.querySelectorAll('button, input, select').forEach(el => {
+                el.disabled = shouldBeDisabled;
+            });
         });
     }
     
