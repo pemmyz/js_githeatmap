@@ -940,8 +940,6 @@ document.addEventListener('DOMContentLoaded', () => {
             const header = section.querySelector('h3');
             const isViewSection = header && header.textContent === 'View';
             
-            // Determine if the section should be disabled.
-            // It should be disabled if we are NOT interactive (i.e., in game mode) AND it's NOT the view section.
             const shouldBeDisabled = !isInteractive && !isViewSection;
 
             section.style.opacity = shouldBeDisabled ? '0.5' : '1';
@@ -952,10 +950,13 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function startGame() {
+        const switchBtn = $('#game-switch');
         if (currentGameType === 'tetris') {
             activeGame = new SidewaysTetris(state.palette);
+            switchBtn.textContent = 'Switch to Snake';
         } else if (currentGameType === 'snake') {
             activeGame = new SnakeGame(state.game.difficulty, state.palette);
+            switchBtn.textContent = 'Switch to Tetris';
         }
         $('#game-score').textContent = '0';
         state.game.paused = false;
@@ -970,6 +971,7 @@ document.addEventListener('DOMContentLoaded', () => {
         state.game.active = !state.game.active;
 
         if (state.game.active) {
+            gameModeToggle.textContent = '🎨 Drawing';
             setPanelsInteractive(false);
             totalContributionsContainer.innerHTML = `Score: <span id="game-score">0</span>`;
             $('#game-hud').classList.remove('hidden');
@@ -988,6 +990,7 @@ document.addEventListener('DOMContentLoaded', () => {
             startGame();
 
         } else {
+            gameModeToggle.textContent = '🎮 Game';
             setPanelsInteractive(true);
             totalContributionsContainer.innerHTML = `Total Contributions: <span id="total-contributions">0</span>`;
             $('#game-hud').classList.add('hidden');
@@ -1038,7 +1041,6 @@ document.addEventListener('DOMContentLoaded', () => {
                 state.game.paused = true;
                 setTimeout(() => {
                     alert(`Game Over!\nFinal Score: ${activeGame.score.toLocaleString()}`);
-                    toggleGameMode();
                 }, 100);
             }
         }
