@@ -131,6 +131,10 @@ function calculateLevel(count) {
 - Shift Up / Down / Left / Right  
 - With **Wrap** and **Auto Animation**, auto-generates a scrolling marquee
 
+- **Wrap:** When checked, any content moved off one edge of the canvas will wrap around and reappear on the opposite side.
+
+- **Auto Wrap Animation:** When checked, pressing a shift arrow will automatically generate all the necessary frames to create a full, looping animation of the content scrolling across the canvas and returning to its starting position. This is perfect for creating smooth scrolling backgrounds or marquees from a single drawing.
+
 ---
 
 ## 📤 Export Options
