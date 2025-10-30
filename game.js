@@ -123,7 +123,47 @@ class SidewaysTetris {
 
     checkCollision(piece, rowOffset, colOffset) { for (let r = 0; r < piece.shape.length; r++) { for (let c = 0; c < piece.shape[r].length; c++) { if (piece.shape[r][c] !== 0) { const newRow = piece.row + r + rowOffset; const newCol = piece.col + c + colOffset; if (newRow < 0 || newRow >= GAME_ROWS || newCol >= GAME_COLS || newCol < 0) return true; if (this.grid[newRow] && this.grid[newRow][newCol] !== 0) return true; } } } return false; }
     mergePiece() { this.piece.shape.forEach((row, r) => { row.forEach((value, c) => { if (value !== 0) { const gridRow = this.piece.row + r; const gridCol = this.piece.col + c; if (gridRow >= 0 && gridRow < GAME_ROWS && gridCol >= 0 && gridCol < GAME_COLS) this.grid[gridRow][gridCol] = this.piece.colorIndex; } }); }); }
-    clearColumns() { let columnsCleared = 0; for (let c = GAME_COLS - 1; c >= 0; c--) { let isFull = true; for (let r = 0; r < GAME_ROWS; r++) { if (this.grid[r][c] === 0) { isFull = false; break; } } if (isFull) { columnsCleared++; for (let r = 0; r < GAME_ROWS; r++) { this.grid[r].splice(c, 1); this.grid[r].unshift(0); } } } if (columnsCleared > 0) { const points = [0, 40, 100, 300, 1200]; this.score += points[columnsCleared] || points[4]; } }
+    
+    clearColumns() {
+        let fullColumnsIndices = [];
+        // First, find all columns that are full without modifying the grid yet.
+        for (let c = 0; c < GAME_COLS; c++) {
+            let isFull = true;
+            for (let r = 0; r < GAME_ROWS; r++) {
+                if (this.grid[r][c] === 0) {
+                    isFull = false;
+                    break;
+                }
+            }
+            if (isFull) {
+                fullColumnsIndices.push(c);
+            }
+        }
+
+        const columnsCleared = fullColumnsIndices.length;
+        if (columnsCleared > 0) {
+            // Remove the identified full columns.
+            // It's important to iterate backwards through the indices to prevent
+            // the splice operation from messing up the indices of columns yet to be removed.
+            for (let i = columnsCleared - 1; i >= 0; i--) {
+                const colIndex = fullColumnsIndices[i];
+                for (let r = 0; r < GAME_ROWS; r++) {
+                    this.grid[r].splice(colIndex, 1);
+                }
+            }
+
+            // Add new empty columns at the beginning (left side) to replace the cleared ones.
+            for (let i = 0; i < columnsCleared; i++) {
+                for (let r = 0; r < GAME_ROWS; r++) {
+                    this.grid[r].unshift(0);
+                }
+            }
+
+            // Award points based on the number of columns cleared at once.
+            const points = [0, 40, 100, 300, 1200];
+            this.score += points[columnsCleared] || points[4];
+        }
+    }
 }
 
 // --- SNAKE GAME ---
