@@ -36,14 +36,12 @@ document.addEventListener('DOMContentLoaded', () => {
     let state = {};
     const undoStack = [];
     const redoStack = [];
-    let activeGame = null;
-    let currentGameType = 'tetris'; // 'tetris' or 'snake'
+    let activeGames = []; // Array to support multi-instance games like GoL
 
     // Variables to store editor state before starting the game
     let editorFramesBackup = null;
     let editorFrameIndexBackup = 0;
     let editorLayerIndexBackup = 0;
-
 
     const defaultState = {
         thresholds: [1, 4, 8, 13],
@@ -79,6 +77,8 @@ document.addEventListener('DOMContentLoaded', () => {
             paused: false,
             score: 0,
             difficulty: 3,
+            currentGame: 'block-auto', // Default game
+            combinedMode: false,
         },
     };
 
@@ -222,6 +222,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 if (parsed.imageLegend) parsed.imageLegend.img = null;
                 state = { ...defaultState, ...parsed };
                 state.animation = { ...defaultState.animation, ...parsed.animation };
+                state.game = { ...defaultState.game, ...parsed.game };
                 state.frames = state.frames || [];
                 state.currentFrameIndex = Math.min(state.currentFrameIndex, state.frames.length - 1);
                 state.activeLayerIndex = state.activeLayerIndex || 0;
@@ -291,7 +292,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 instanceWrapper.classList.add('active-layer');
             }
 
-            if (index > 0 && !state.game.active) {
+            if (currentFrame.layers.length > 1) {
                 const closeBtn = document.createElement('button');
                 closeBtn.className = 'close-layer-btn';
                 closeBtn.innerHTML = '&times;';
@@ -390,8 +391,13 @@ document.addEventListener('DOMContentLoaded', () => {
 
             drawGrid(ctx, layer.cells);
             
-            if (index === state.activeLayerIndex && state.game.active && activeGame) {
-                activeGame.render(ctx, cellSize, gap, drawCrispCell);
+            // Render game elements
+            if (state.game.active && activeGames.length > 0) {
+                // For GoL, rendering is implicit via drawGrid.
+                // For other games, they are single-instance and render on the active layer.
+                if (state.game.currentGame !== 'gol' && index === state.activeLayerIndex) {
+                    activeGames[0].render(ctx, cellSize, gap, drawCrispCell);
+                }
             }
             
             if (index === state.activeLayerIndex && selection.active) {
@@ -466,13 +472,17 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function handlePointerDown(e) {
-        if (state.game.active) return;
+        // Drawing is allowed in GoL game mode to modify the simulation
+        if (state.game.active && state.game.currentGame !== 'gol') return;
+
         const layerIndex = parseInt(e.target.dataset.layerIndex);
         setActiveLayer(layerIndex);
         isDrawing = true;
         const pos = getCellFromCoords(e);
         if (!pos) return;
-        pushUndoState();
+        
+        if (!state.game.active) pushUndoState();
+
         switch (state.currentTool) {
             case 'pencil': case 'eraser': applyBrush(pos.c, pos.r); break;
             case 'rect':
@@ -486,7 +496,9 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function handlePointerMove(e) {
-        if (!isDrawing || state.game.active) return;
+        if (!isDrawing) return;
+        if (state.game.active && state.game.currentGame !== 'gol') return;
+
         const pos = getCellFromCoords(e);
         if (!pos) return;
         switch (state.currentTool) {
@@ -500,15 +512,22 @@ document.addEventListener('DOMContentLoaded', () => {
     }
     
     function handlePointerUp(e) {
-        if (!isDrawing || state.game.active) return;
+        if (!isDrawing) return;
+        if (state.game.active && state.game.currentGame !== 'gol') {
+            isDrawing = false;
+            return;
+        }
         isDrawing = false;
         if (state.currentTool === 'rect' && selection.active) {
             applyRectFill();
         }
         selection.active = false;
-        updateTotalContributions();
-        updateFramesUI();
-        saveState();
+
+        if (!state.game.active) {
+            updateTotalContributions();
+            updateFramesUI();
+            saveState();
+        }
         renderAllLayers();
     }
     
@@ -569,9 +588,25 @@ document.addEventListener('DOMContentLoaded', () => {
 
     // --- LAYERS LOGIC ---
     function addLayer() {
+        if (state.game.active) {
+            if (state.game.currentGame === 'gol') {
+                const gameFrame = state.frames[0];
+                if (gameFrame && gameFrame.layers) {
+                    const newLayerCells = generateGridData();
+                    gameFrame.layers.push({ cells: newLayerCells });
+                    const newGame = new GameOfLife(state.game.difficulty, state.palette, newLayerCells);
+                    activeGames.push(newGame);
+                    state.activeLayerIndex = gameFrame.layers.length - 1;
+                    rebuildDrawingAreasDOM();
+                }
+            }
+            return;
+        }
+
         pushUndoState();
         const newLayerCells = generateGridData();
         state.frames.forEach(frame => {
+            if (!frame.layers) frame.layers = [];
             frame.layers.push({ cells: JSON.parse(JSON.stringify(newLayerCells)) });
         });
         state.activeLayerIndex = state.frames[0].layers.length - 1;
@@ -580,6 +615,23 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function deleteLayer(layerIndex) {
+        if (state.game.active) {
+            if (state.game.currentGame === 'gol') {
+                const gameFrame = state.frames[0];
+                if (gameFrame.layers.length <= 1) {
+                    alert("Cannot delete the last simulation area.");
+                    return;
+                }
+                gameFrame.layers.splice(layerIndex, 1);
+                activeGames.splice(layerIndex, 1);
+                if (state.activeLayerIndex >= layerIndex) {
+                    state.activeLayerIndex = Math.max(0, state.activeLayerIndex - 1);
+                }
+                rebuildDrawingAreasDOM();
+            }
+            return;
+        }
+
         if (state.frames[0].layers.length <= 1) {
             alert("Cannot delete the last layer.");
             return;
@@ -607,9 +659,11 @@ document.addEventListener('DOMContentLoaded', () => {
             el.classList.toggle('active-layer', parseInt(el.dataset.layerIndex) === layerIndex);
         });
         
-        updateTotalContributions();
+        if (!state.game.active) {
+            updateTotalContributions();
+            saveState();
+        }
         renderAllLayers();
-        saveState();
     }
 
     // --- MODAL LOGIC ---
@@ -792,10 +846,42 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         });
         
-        $('#game-pause').addEventListener('click', () => { if(state.game.active) state.game.paused = !state.game.paused; });
-        $('#game-reset').addEventListener('click', () => { if (activeGame) { activeGame.reset(); state.game.paused = false; } });
-        $('#game-switch').addEventListener('click', switchGame);
-        $('#game-difficulty').addEventListener('input', e => { state.game.difficulty = parseInt(e.target.value); if(activeGame) activeGame.difficulty = state.game.difficulty; });
+        // Game Controls
+        $('#game-pause').addEventListener('click', () => { if (state.game.active) { state.game.paused = !state.game.paused; updateGameUI(); }});
+        $('#game-reset').addEventListener('click', () => {
+             if (state.game.active) {
+                if (state.game.currentGame === 'gol') {
+                    state.frames[0].layers.forEach(layer => { layer.cells = generateGridData(); });
+                    startGame();
+                    rebuildDrawingAreasDOM();
+                } else {
+                    startGame();
+                }
+                state.game.paused = false;
+                updateGameUI();
+            }
+        });
+        $('#game-select').addEventListener('change', e => {
+            state.game.currentGame = e.target.value;
+            if (state.game.active) startGame();
+        });
+        $('#game-combined-mode').addEventListener('change', e => {
+            state.game.combinedMode = e.target.checked;
+            if (state.game.active) {
+                alert("Game will restart to apply seamless mode.");
+                startGame();
+            }
+        });
+        $('#game-difficulty').addEventListener('input', e => {
+            state.game.difficulty = parseInt(e.target.value);
+            activeGames.forEach(game => {
+                game.difficulty = state.game.difficulty;
+                if (game.stepInterval !== undefined) { // GoL
+                     game.stepInterval = Math.max(50, 500 - state.game.difficulty * 40);
+                }
+            });
+        });
+        
         document.addEventListener('keydown', handleKeyDown);
         document.addEventListener('keyup', (e) => { keysPressed[e.key.toLowerCase()] = false; });
     }
@@ -844,10 +930,10 @@ document.addEventListener('DOMContentLoaded', () => {
         const key = e.key.toLowerCase();
         keysPressed[key] = true;
 
-        if (state.game.active && !state.game.paused && activeGame) {
-            if (currentGameType === 'tetris') {
-                if (key === 'a' || key === 'arrowleft') { e.preventDefault(); activeGame.rotate(); return; }
-                if (key === ' ') { e.preventDefault(); activeGame.hardDrop(); return; }
+        if (state.game.active && !state.game.paused && activeGames.length > 0) {
+            if (state.game.currentGame === 'tetris') {
+                if (key === 'a' || key === 'arrowleft') { e.preventDefault(); activeGames[0].rotate(); return; }
+                if (key === ' ') { e.preventDefault(); activeGames[0].hardDrop(); return; }
             }
             if (['w', 's', 'd', 'a', 'arrowup', 'arrowdown', 'arrowright', 'arrowleft', ' '].includes(key)) {
                 e.preventDefault();
@@ -944,27 +1030,63 @@ document.addEventListener('DOMContentLoaded', () => {
 
             section.style.opacity = shouldBeDisabled ? '0.5' : '1';
             section.querySelectorAll('button, input, select').forEach(el => {
-                el.disabled = shouldBeDisabled;
+                // Special handling for GoL's "Add Draw Area" button
+                if (el.id === 'add-layer-btn' && state.game.active && state.game.currentGame === 'gol') {
+                    el.disabled = false;
+                } else {
+                    el.disabled = shouldBeDisabled;
+                }
             });
         });
     }
+
+    function updateGameUI() {
+        const pauseBtn = $('#game-pause');
+        if (pauseBtn) pauseBtn.textContent = state.game.paused ? 'Resume' : 'Pause';
+    }
     
     function startGame() {
-        const switchBtn = $('#game-switch');
-        if (currentGameType === 'tetris') {
-            activeGame = new SidewaysTetris(state.palette);
-            switchBtn.textContent = 'Switch to Snake';
-        } else if (currentGameType === 'snake') {
-            activeGame = new SnakeGame(state.game.difficulty, state.palette);
-            switchBtn.textContent = 'Switch to Tetris';
-        }
-        $('#game-score').textContent = '0';
+        activeGames = [];
         state.game.paused = false;
-    }
-
-    function switchGame() {
-        currentGameType = (currentGameType === 'tetris') ? 'snake' : 'tetris';
-        startGame();
+        updateGameUI();
+    
+        const addLayerBtn = $('#add-layer-btn');
+        const difficulty = state.game.difficulty;
+        const palette = state.palette;
+    
+        let initialGrid = null;
+        if (state.game.combinedMode && editorFramesBackup) {
+            const backupLayer = editorFramesBackup[editorFrameIndexBackup]?.layers[editorLayerIndexBackup];
+            if (backupLayer) initialGrid = backupLayer.cells;
+        }
+    
+        if (state.game.currentGame === 'gol' && initialGrid) {
+            state.frames[0].layers[0].cells = JSON.parse(JSON.stringify(initialGrid));
+            rebuildDrawingAreasDOM();
+        }
+    
+        const gameFrame = state.frames[0];
+    
+        if (state.game.currentGame === 'gol') {
+            gameFrame.layers.forEach(layer => {
+                activeGames.push(new GameOfLife(difficulty, palette, layer.cells));
+            });
+            totalContributionsContainer.innerHTML = `Generation: <span id="game-score">0</span>`;
+            addLayerBtn.disabled = false;
+        } else {
+            let gameInstance = null;
+            switch(state.game.currentGame) {
+                case 'block-auto': gameInstance = new BlockAutoGame(difficulty, palette, initialGrid); break;
+                case 'tetris': gameInstance = new SidewaysTetris(palette); break;
+                case 'snake': gameInstance = new SnakeGame(difficulty, palette); break;
+            }
+            if (gameInstance) activeGames.push(gameInstance);
+            totalContributionsContainer.innerHTML = `Score: <span id="game-score">0</span>`;
+            addLayerBtn.disabled = true;
+        }
+    
+        activeGames.forEach(game => game.reset());
+        $('#game-score').textContent = '0';
     }
     
     function toggleGameMode() {
@@ -972,9 +1094,11 @@ document.addEventListener('DOMContentLoaded', () => {
 
         if (state.game.active) {
             gameModeToggle.textContent = '🎨 Drawing';
-            setPanelsInteractive(false);
-            totalContributionsContainer.innerHTML = `Score: <span id="game-score">0</span>`;
             $('#game-hud').classList.remove('hidden');
+            
+            $('#game-select').value = state.game.currentGame;
+            $('#game-combined-mode').checked = state.game.combinedMode;
+            $('#game-difficulty').value = state.game.difficulty;
 
             editorFramesBackup = JSON.parse(JSON.stringify(state.frames));
             editorFrameIndexBackup = state.currentFrameIndex;
@@ -988,12 +1112,14 @@ document.addEventListener('DOMContentLoaded', () => {
             
             rebuildDrawingAreasDOM();
             startGame();
+            setPanelsInteractive(false);
 
         } else {
             gameModeToggle.textContent = '🎮 Game';
             setPanelsInteractive(true);
             totalContributionsContainer.innerHTML = `Total Contributions: <span id="total-contributions">0</span>`;
             $('#game-hud').classList.add('hidden');
+            $('#add-layer-btn').disabled = false;
             
             if (editorFramesBackup) {
                 state.frames = editorFramesBackup;
@@ -1001,7 +1127,7 @@ document.addEventListener('DOMContentLoaded', () => {
                 state.activeLayerIndex = editorLayerIndexBackup;
                 editorFramesBackup = null;
             }
-            activeGame = null;
+            activeGames = [];
 
             rebuildDrawingAreasDOM();
             updateUIFromState();
@@ -1031,16 +1157,31 @@ document.addEventListener('DOMContentLoaded', () => {
             }
         }
 
-        if (state.game.active && !state.game.paused && activeGame) { 
-            activeGame.update(deltaTime, keysPressed);
-            renderAllLayers();
+        if (state.game.active && !state.game.paused && activeGames.length > 0) {
+            if (state.game.currentGame === 'gol') {
+                const gameFrame = state.frames[0];
+                activeGames.forEach((game, index) => {
+                    const layerCells = gameFrame.layers[index]?.cells;
+                    if (layerCells) game.update(deltaTime, layerCells);
+                });
+                renderAllLayers();
+            } else {
+                const game = activeGames[0];
+                game.update(deltaTime, keysPressed);
+                renderAllLayers();
+            }
+    
+            const primaryGame = activeGames[0];
             const scoreEl = $('#game-score');
-            if (scoreEl) scoreEl.textContent = activeGame.score.toLocaleString();
-
-            if (activeGame.gameOver) {
+            if (scoreEl && primaryGame) scoreEl.textContent = Math.floor(primaryGame.score).toLocaleString();
+    
+            if (primaryGame && primaryGame.gameOver) {
                 state.game.paused = true;
+                updateGameUI();
                 setTimeout(() => {
-                    alert(`Game Over!\nFinal Score: ${activeGame.score.toLocaleString()}`);
+                    const finalScore = Math.floor(primaryGame.score).toLocaleString();
+                    const scoreLabel = state.game.currentGame === 'gol' ? 'Generations' : 'Final Score';
+                    alert(`Game Over!\n${scoreLabel}: ${finalScore}`);
                 }, 100);
             }
         }

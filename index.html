@@ -126,7 +126,15 @@
             <div id="game-hud" class="hidden">
                 <div class="game-hud-item">Score: <span id="game-score">0</span></div>
                 <div class="game-controls">
-                    <button id="game-switch">Switch Game</button>
+                    <select id="game-select">
+                        <option value="block-auto">Block Auto</option>
+                        <option value="gol">Game of Life</option>
+                        <option value="tetris">Sideways Tetris</option>
+                        <option value="snake">Snake</option>
+                    </select>
+                    <label title="Use the current drawing as a starting point for the game. For GoL, it's the seed. For Block Auto, it becomes static obstacles.">
+                        <input type="checkbox" id="game-combined-mode"> Seamless
+                    </label>
                     <label>Difficulty: <input type="range" id="game-difficulty" min="1" max="10" value="3"></label>
                     <button id="game-pause">Pause</button>
                     <button id="game-reset">Reset</button>
