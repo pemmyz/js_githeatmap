@@ -42,9 +42,17 @@ class BlockAutoGame {
 
     spawnObstacle() {
         const type = SHAPE_KEYS[Math.floor(Math.random() * SHAPE_KEYS.length)];
-        const shape = SHAPES[type];
+        let shape = SHAPES[type]; // Use 'let' as shape will be reassigned
         const colorIndex = Math.floor(Math.random() * 4) + 1;
         
+        // --- NEW: Randomly rotate the shape before spawning ---
+        const numRotations = Math.floor(Math.random() * 4); // 0, 1, 2, or 3 rotations
+        for (let i = 0; i < numRotations; i++) {
+            // This is the standard matrix rotation logic: transpose + reverse rows
+            shape = shape[0].map((_, colIndex) => shape.map(row => row[colIndex]).reverse());
+        }
+        // --- END NEW ---
+
         const shapeHeight = shape.length;
         const row = Math.floor(Math.random() * (GAME_ROWS - shapeHeight + 1));
         
