@@ -801,6 +801,7 @@ document.addEventListener('DOMContentLoaded', () => {
         $('#export-json').addEventListener('click', exportJSON);
         $('#import-csv').addEventListener('click', () => openFilePicker('.csv'));
         $('#export-csv').addEventListener('click', exportCSV);
+        $('#randomize-btn').addEventListener('click', randomizeHeatmap);
         $('#file-input').addEventListener('change', handleFileLoad);
         
         $('#zoom-100').addEventListener('click', () => { state.view.fitToWidth = false; state.view.zoom = 1.0; resizeAndRenderAll(); saveState(); });
@@ -1019,6 +1020,63 @@ document.addEventListener('DOMContentLoaded', () => {
     function exportCSV() { let csvContent = "date,count\n"; const cells = getActiveCells(); if (!cells) return; cells.flat().filter(Boolean).forEach(cell => { if (cell.count > 0) { csvContent += `${cell.dateISO},${cell.count}\n`; } }); const dataStr = "data:text/csv;charset=utf-8," + encodeURIComponent(csvContent); downloadFile(dataStr, "heatmap.csv"); }
     function downloadFile(data, filename) { const link = document.createElement('a'); link.href = data; link.download = filename; link.click(); }
     
+    // --- NEW RANDOMIZE FUNCTION ---
+    function randomizeHeatmap() {
+        if (state.game.active) return;
+        const cells = getActiveCells();
+        if (!cells) return;
+
+        pushUndoState();
+
+        // Check if there's any existing drawing by seeing if any cell has a count > 0
+        const hasContent = cells.flat().some(cell => cell && cell.count > 0);
+
+        if (hasContent) {
+            // If there's content, fill *around* it with subtle, low-level noise
+            for (let c = 0; c < COLS; c++) {
+                for (let r = 0; r < ROWS; r++) {
+                    const cell = cells[c][r];
+                    // Only modify empty cells
+                    if (cell && cell.count === 0) {
+                        // Give a 25% chance to become a level 1 cell, otherwise stay empty
+                        if (Math.random() > 0.75) {
+                           const randomLevel = 1; // Only use the lowest level for background noise
+                           // Set the count to the minimum required for that level
+                           cell.count = state.thresholds[randomLevel - 1] || 1;
+                           cell.level = calculateLevel(cell.count);
+                        }
+                    }
+                }
+            }
+        } else {
+            // If the grid is empty, fill the entire thing with random data
+            for (let c = 0; c < COLS; c++) {
+                for (let r = 0; r < ROWS; r++) {
+                    const cell = cells[c][r];
+                    if (cell) {
+                        // Choose a random level from 0 to 4
+                        const randomLevel = Math.floor(Math.random() * 5); 
+                        if (randomLevel > 0) {
+                            // To make it look more natural, randomize the count within the threshold range for that level
+                            const minCount = state.thresholds[randomLevel - 1] || 1;
+                            const maxCount = state.thresholds[randomLevel] ? state.thresholds[randomLevel] - 1 : minCount + 5;
+                            cell.count = Math.floor(Math.random() * (maxCount - minCount + 1)) + minCount;
+                        } else {
+                            cell.count = 0;
+                        }
+                        cell.level = calculateLevel(cell.count);
+                    }
+                }
+            }
+        }
+        
+        // Update the UI
+        renderAllLayers();
+        updateTotalContributions();
+        updateFramesUI();
+        saveState();
+    }
+
     function setPanelsInteractive(isInteractive) {
         const allSections = $$('#tools-panel .panel-section, #timeline-panel .panel-section');
 

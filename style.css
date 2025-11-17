@@ -306,6 +306,14 @@ label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.875rem
     gap: 4px;
 }
 
+.frame-randomize-action {
+    margin-top: 12px;
+    display: flex;
+}
+.frame-randomize-action button {
+    flex-grow: 1;
+}
+
 .export-options { margin-top: 8px; }
 
 .export-controls {
