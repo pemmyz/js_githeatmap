@@ -168,21 +168,25 @@ document.addEventListener('DOMContentLoaded', () => {
     function generateGridData() {
         const cells = Array.from({ length: COLS }, () => new Array(ROWS).fill(null));
         const endDate = new Date();
-        const startDate = new Date();
-        startDate.setDate(endDate.getDate() - (COLS * ROWS - 1));
-        startDate.setDate(startDate.getDate() - startDate.getDay());
+        const startDate = new Date(endDate);
+
+        // Correctly calculate the start date. We want the grid to end with "today".
+        // To do this, we find the Sunday of the current week, and then go back 52 weeks (COLS - 1).
+        startDate.setDate(endDate.getDate() - endDate.getDay() - ((COLS - 1) * 7));
+
         let currentDate = new Date(startDate);
-        for (let i = 0; i < COLS * ROWS; i++) {
-            const dayOfWeek = currentDate.getDay();
-            const weekIndex = Math.floor((currentDate - startDate) / (1000 * 60 * 60 * 24 * 7));
-            if (weekIndex < COLS) {
-                cells[weekIndex][dayOfWeek] = {
+        
+        // A nested loop is clearer for populating a 2D grid.
+        // This ensures every cell is initialized, fixing the "missing cell" issue.
+        for (let c = 0; c < COLS; c++) {
+            for (let r = 0; r < ROWS; r++) {
+                cells[c][r] = {
                     dateISO: currentDate.toISOString().split('T')[0],
                     count: 0,
                     level: 0,
                 };
+                currentDate.setDate(currentDate.getDate() + 1);
             }
-            currentDate.setDate(currentDate.getDate() + 1);
         }
         recalculateAllLevels(cells);
         return cells;
