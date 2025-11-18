@@ -95,6 +95,7 @@ document.addEventListener('DOMContentLoaded', () => {
         setupEventListeners();
         rebuildDrawingAreasDOM();
         updateUIFromState();
+        updateUndoRedoButtons();
         applyTheme(localStorage.getItem('theme') || 'dark');
         requestAnimationFrame(mainLoop);
     }
@@ -254,6 +255,7 @@ document.addEventListener('DOMContentLoaded', () => {
         redoStack.length = 0;
         if (undoStack.length > 50) undoStack.shift();
     }
+    function updateUndoRedoButtons() { const undoBtn = $('#undo-btn'); const redoBtn = $('#redo-btn'); if (undoBtn) undoBtn.disabled = undoStack.length === 0; if (redoBtn) redoBtn.disabled = redoStack.length === 0; }
 
     function undo() {
         if (undoStack.length === 0 || state.game.active) return;
@@ -265,6 +267,7 @@ document.addEventListener('DOMContentLoaded', () => {
         rebuildDrawingAreasDOM();
         updateUIFromState();
         saveState();
+        updateUndoRedoButtons();
     }
 
     function redo() {
@@ -277,6 +280,7 @@ document.addEventListener('DOMContentLoaded', () => {
         rebuildDrawingAreasDOM();
         updateUIFromState();
         saveState();
+        updateUndoRedoButtons();
     }
 
     // --- DOM & CANVAS MANAGEMENT ---
@@ -486,7 +490,11 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!pos) return;
         
         if (!state.game.active) pushUndoState();
-
+        // Since pushUndoState doesn't always update the UI immediately,
+        // let's manually enable the undo button right away.
+        const undoBtn = $('#undo-btn');
+        if(undoBtn) undoBtn.disabled = false;
+        
         switch (state.currentTool) {
             case 'pencil': case 'eraser': applyBrush(pos.c, pos.r); break;
             case 'rect':
@@ -721,6 +729,9 @@ document.addEventListener('DOMContentLoaded', () => {
         helpBtn.addEventListener('click', openHelpModal);
         
         $('#add-layer-btn').addEventListener('click', addLayer);
+
+        $('#undo-btn').addEventListener('click', undo);
+        $('#redo-btn').addEventListener('click', redo);
 
         layerDataBtn.addEventListener('click', openLayerDataModal);
         layerDataCloseBtn.addEventListener('click', closeLayerDataModal);

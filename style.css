@@ -182,6 +182,11 @@ button, select {
     transition: background-color 0.1s;
 }
 
+button:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
 select option:disabled {
     color: var(--muted-color);
 }
@@ -234,10 +239,24 @@ label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.875rem
     flex-grow: 1;
 }
 
-.image-legend-actions, .system-actions {
+.image-legend-actions {
     flex-direction: column;
     align-items: stretch;
 }
+.system-actions {
+    /* The parent already has display:flex and flex-wrap:wrap from a shared rule. */
+    /* We just need to define how the children behave. */
+}
+
+.system-actions #undo-btn,
+.system-actions #redo-btn {
+    flex-grow: 1; /* This makes them share the available space on the line */
+}
+
+.system-actions #reset-all-settings {
+    width: 100%; /* This forces it to take up a full line by itself */
+}
+
 
 /* --- Timeline --- */
 #frames-list {
