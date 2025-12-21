@@ -18,6 +18,12 @@ Turn the classic GitHub contributions calendar/heatmap into a full-on pixel art 
 
 ---
 
+
+## Heatmaps
+![Game 1](heatmaps/heatmap_1.webp)
+![Game 1](heatmaps/heatmap_2.webp)
+![Game 1](heatmaps/heatmap_3.webp)
+
 ## 🔥 Features
 
 ### 🖌 Heatmap Painter
