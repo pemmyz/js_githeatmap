@@ -1264,7 +1264,31 @@ document.addEventListener('DOMContentLoaded', () => {
     
     function newFrame() { if(state.game.active) return; pushUndoState(); const currentFrame = state.frames[state.currentFrameIndex]; const numLayers = currentFrame ? currentFrame.layers.length : 1; const newLayers = []; for (let i=0; i < numLayers; i++) { newLayers.push({ cells: generateGridData() }); } state.frames.push({ layers: newLayers }); state.currentFrameIndex = state.frames.length - 1; rebuildDrawingAreasDOM(); updateFramesUI(); saveState(); }
     function duplicateFrame() { if(state.game.active) return; if (state.frames.length === 0) return; pushUndoState(); const newFrame = JSON.parse(JSON.stringify(state.frames[state.currentFrameIndex])); state.frames.splice(state.currentFrameIndex + 1, 0, newFrame); state.currentFrameIndex++; rebuildDrawingAreasDOM(); updateFramesUI(); saveState(); }
-    function deleteFrame() { if(state.game.active) return; if (state.frames.length <= 1) return; pushUndoState(); state.frames.splice(state.currentFrameIndex, 1); if (state.currentFrameIndex >= state.frames.length) { state.currentFrameIndex = state.frames.length - 1; } selectFrame(state.currentFrameIndex); }
+
+function deleteFrame() { 
+        if(state.game.active) return; 
+        if (state.frames.length <= 1) return; 
+        
+        pushUndoState(); 
+        
+        // Remove the frame from the array
+        state.frames.splice(state.currentFrameIndex, 1); 
+        
+        // Adjust the index if we deleted the last frame in the list
+        if (state.currentFrameIndex >= state.frames.length) { 
+            state.currentFrameIndex = state.frames.length - 1; 
+        } 
+        
+        // DIRECTLY call the update functions instead of routing through selectFrame.
+        // selectFrame exits early if the index hasn't changed, which prevents the UI refresh here.
+        rebuildDrawingAreasDOM(); 
+        updateFramesUI(); 
+        saveState(); 
+    }
+
+
+
+
     function selectFrame(index) { if (index < 0 || index >= state.frames.length || index === state.currentFrameIndex) return; state.currentFrameIndex = index; rebuildDrawingAreasDOM(); updateUIFromState(); }
     function updateFramesUI() { const list = $('#frames-list'); list.innerHTML = ''; state.frames.forEach((frame, index) => { const item = document.createElement('div'); item.className = 'frame-item'; item.dataset.index = index; if (index === state.currentFrameIndex) item.classList.add('selected'); const thumbCanvas = document.createElement('canvas'); thumbCanvas.width = 106; thumbCanvas.height = 14; const topLayerCells = frame.layers[0]?.cells; if (topLayerCells) { drawThumbnail(thumbCanvas, topLayerCells); } const indexEl = document.createElement('span'); indexEl.className = 'frame-index'; indexEl.textContent = index; item.appendChild(indexEl); item.appendChild(thumbCanvas); item.addEventListener('click', () => selectFrame(index)); item.draggable = true; item.addEventListener('dragstart', handleDragStart); item.addEventListener('dragover', handleDragOver); item.addEventListener('drop', handleDrop); item.addEventListener('dragend', handleDragEnd); list.appendChild(item); }); }
     function handleDragStart(e) { dragSrcElement = this; e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/html', this.innerHTML); this.classList.add('dragging'); }
