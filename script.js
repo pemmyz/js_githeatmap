@@ -984,15 +984,34 @@ document.addEventListener('DOMContentLoaded', () => {
         if ((e.ctrlKey || e.metaKey) && (key === 'y' || (e.shiftKey && key === 'z'))) { e.preventDefault(); redo(); }
     }
 
-    function applyTheme(theme) {
+function applyTheme(theme) {
         document.body.classList.toggle('dark-mode', theme === 'dark');
         themeToggle.textContent = theme === 'dark' ? '☀️' : '🌙';
         localStorage.setItem('theme', theme);
-        if (theme === 'dark') { state.palette = [...PRESETS.dark]; $('#palette-preset').value = 'dark'; } 
-        else { state.palette = [...PRESETS.classic]; $('#palette-preset').value = 'classic'; }
+        
+        // 1. Update the state palette based on the new theme
+        if (theme === 'dark') { 
+            state.palette = [...PRESETS.dark]; 
+            $('#palette-preset').value = 'dark'; 
+        } else { 
+            state.palette = [...PRESETS.classic]; 
+            $('#palette-preset').value = 'classic'; 
+        }
+        
+        // 2. IMPORTANT: If games are active, update their palette immediately
+        if (state.game.active && activeGames.length > 0) {
+            activeGames.forEach(game => {
+                game.palette = state.palette;
+            });
+        }
+    
+        // 3. Update all UI elements and force redraws
         updatePaletteUI();
-        renderAllLayers();
+        updateFramesUI();       // <--- Redraws the thumbnails immediately
+        renderAllMonthLabels(); // <--- Updates month labels
+        renderAllLayers();      // <--- Repaints the main canvas
     }
+    
     function toggleTheme() {
         const newTheme = document.body.classList.contains('dark-mode') ? 'light' : 'dark';
         applyTheme(newTheme);
