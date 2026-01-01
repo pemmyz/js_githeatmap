@@ -1454,7 +1454,7 @@ function drawFrameWithLabels(tempCtx, cells) {
             const date = new Date(cell.dateISO + 'T00:00:00'); 
             const month = date.getUTCMonth(); 
             if (month !== lastMonth && date.getUTCDate() < 8) { 
-                tempCtx.fillText(months[month], PADDING + c * (exportCellSize + exportGap), 22); 
+                tempCtx.fillText(months[month], PADDING + c * (exportCellSize + exportGap), 20); 
                 lastMonth = month; 
             } 
         } 
