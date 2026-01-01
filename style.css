@@ -146,6 +146,8 @@ aside {
     cursor: crosshair;
     touch-action: none;
 }
+
+
 .heatmap-labels-left {
     position: absolute;
     left: 0;
@@ -153,20 +155,26 @@ aside {
     display: flex;
     flex-direction: column;
     gap: 4px; 
-    color: var(--muted-color);
+    color: #000000;
     font-size: 0.75rem;
 }
+
+
 .heatmap-labels-left span {
     height: 10px; 
 }
+
+
+
 .heatmap-labels-top {
     position: absolute;
-    top: 0;
+    top: 12px;
     left: 30px;
     display: flex;
-    color: var(--muted-color);
+    color: #000000;
     font-size: 0.75rem;
 }
+
 .heatmap-month-label { position: absolute; }
 
 

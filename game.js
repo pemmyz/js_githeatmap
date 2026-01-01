@@ -1,5 +1,3 @@
-// game.js
-
 const GAME_ROWS = 7;
 const GAME_COLS = 53;
 

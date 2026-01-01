@@ -1420,7 +1420,59 @@ function deleteFrame() {
     function exportAnimation() { if (state.frames.length === 0) return; const warningEl = $('#export-anim-warning'); warningEl.textContent = "This will trigger multiple downloads."; warningEl.classList.remove('hidden'); const includeLabels = $('#export-include-labels').checked; const firstFrameCells = state.frames[0]?.layers[0]?.cells; const downloads = []; state.frames.forEach((frame, frameIdx) => { const topLayer = frame.layers[0]; if (topLayer) { let cellsForExport = topLayer.cells; if (state.animation.stableMonths && includeLabels && firstFrameCells) { const hybridCells = JSON.parse(JSON.stringify(topLayer.cells)); for (let c = 0; c < COLS; c++) { for (let r = 0; r < ROWS; r++) { if (hybridCells[c][r] && firstFrameCells[c][r]) { hybridCells[c][r].dateISO = firstFrameCells[c][r].dateISO; } } } cellsForExport = hybridCells; } downloads.push({ cells: cellsForExport, frameIdx }); } }); let downloadIndex = 0; const downloadNext = () => { if (downloadIndex >= downloads.length) { warningEl.classList.add('hidden'); return; } const { cells, frameIdx } = downloads[downloadIndex]; const frameCanvas = createFrameCanvas(cells, includeLabels); const dataURL = frameCanvas.toDataURL('image/png'); downloadFile(dataURL, `anim-frame-${String(frameIdx).padStart(3, '0')}.png`); downloadIndex++; setTimeout(downloadNext, 200); }; downloadNext(); }
     function exportFrame(format = 'image/png') { const includeLabels = $('#export-include-labels').checked; const frameCanvas = createFrameCanvas(getActiveCells(), includeLabels); const dataURL = frameCanvas.toDataURL(format); const ext = format.split('/')[1]; downloadFile(dataURL, `frame-${state.currentFrameIndex}-layer-${state.activeLayerIndex}.${ext}`); }
     function createFrameCanvas(cells, includeLabels) { const tempCanvas = document.createElement('canvas'); const tempCtx = tempCanvas.getContext('2d'); if (includeLabels) { drawFrameWithLabels(tempCtx, cells); } else { const exportCellSize = BASE_CELL_SIZE; const exportGap = GAP_SIZE; tempCanvas.width = (exportCellSize + exportGap) * COLS - exportGap; tempCanvas.height = (exportCellSize + exportGap) * ROWS - exportGap; tempCtx.imageSmoothingEnabled = false; tempCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg-color'); tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height); for (let c = 0; c < COLS; c++) { for (let r = 0; r < ROWS; r++) { const cell = cells[c][r]; if (!cell) continue; const x = c * (exportCellSize + exportGap); const y = r * (exportCellSize + exportGap); const mainColor = state.palette[cell.level]; drawCrispCell(tempCtx, x, y, exportCellSize, mainColor, cell.level); } } } return tempCanvas; }
-    function drawFrameWithLabels(tempCtx, cells) { const PADDING = 30; const exportCellSize = BASE_CELL_SIZE; const exportGap = GAP_SIZE; const gridW = (exportCellSize + exportGap) * COLS - exportGap; const gridH = (exportCellSize + exportGap) * ROWS - exportGap; tempCtx.canvas.width = gridW + PADDING; tempCtx.canvas.height = gridH + PADDING; tempCtx.imageSmoothingEnabled = false; tempCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg-color'); tempCtx.fillRect(0, 0, tempCtx.canvas.width, tempCtx.canvas.height); tempCtx.font = '10px ' + getComputedStyle(document.body).getPropertyValue('--font-family'); tempCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--muted-color'); tempCtx.textAlign = 'left'; tempCtx.textBaseline = 'middle'; const dayLabels = ["", "Mon", "", "Wed", "", "Fri", ""]; dayLabels.forEach((label, i) => { const y = PADDING + i * (exportCellSize + exportGap) + exportCellSize / 2; tempCtx.fillText(label, 0, y); }); const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]; let lastMonth = -1; for (let c = 0; c < COLS; c++) { const cell = cells[c]?.find(cell => cell); if (!cell) continue; const date = new Date(cell.dateISO + 'T00:00:00'); const month = date.getUTCMonth(); if (month !== lastMonth && date.getUTCDate() < 8) { tempCtx.fillText(months[month], PADDING + c * (exportCellSize + exportGap), 15); lastMonth = month; } } for (let c = 0; c < COLS; c++) { for (let r = 0; r < ROWS; r++) { const cell = cells[c][r]; if (!cell) continue; const x = PADDING + c * (exportCellSize + exportGap); const y = PADDING + r * (exportCellSize + exportGap); const mainColor = state.palette[cell.level]; drawCrispCell(tempCtx, x, y, exportCellSize, mainColor, cell.level); } } }
+
+
+
+
+function drawFrameWithLabels(tempCtx, cells) { 
+        const PADDING = 30; 
+        const exportCellSize = BASE_CELL_SIZE; 
+        const exportGap = GAP_SIZE; 
+        const gridW = (exportCellSize + exportGap) * COLS - exportGap; 
+        const gridH = (exportCellSize + exportGap) * ROWS - exportGap; 
+        tempCtx.canvas.width = gridW + PADDING; 
+        tempCtx.canvas.height = gridH + PADDING; 
+        tempCtx.imageSmoothingEnabled = false; 
+        tempCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg-color'); 
+        tempCtx.fillRect(0, 0, tempCtx.canvas.width, tempCtx.canvas.height); 
+        tempCtx.font = '12px ' + getComputedStyle(document.body).getPropertyValue('--font-family'); 
+        
+        // Draw Day Labels (Set to Black)
+        tempCtx.fillStyle = '#000000'; 
+        tempCtx.textAlign = 'left'; 
+        tempCtx.textBaseline = 'middle'; 
+        const dayLabels = ["", "Mon", "", "Wed", "", "Fri", ""]; 
+        dayLabels.forEach((label, i) => { const y = PADDING + i * (exportCellSize + exportGap) + exportCellSize / 2; tempCtx.fillText(label, 0, y); }); 
+        
+        // Draw Month Labels (Set to Black, moved up)
+        // tempCtx.fillStyle is already '#000000' from above, so we don't need to set it again, but valid to keep for clarity
+        const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]; 
+        let lastMonth = -1; 
+        for (let c = 0; c < COLS; c++) { 
+            const cell = cells[c]?.find(cell => cell); 
+            if (!cell) continue; 
+            const date = new Date(cell.dateISO + 'T00:00:00'); 
+            const month = date.getUTCMonth(); 
+            if (month !== lastMonth && date.getUTCDate() < 8) { 
+                tempCtx.fillText(months[month], PADDING + c * (exportCellSize + exportGap), 22); 
+                lastMonth = month; 
+            } 
+        } 
+        
+        // Draw Cells
+        for (let c = 0; c < COLS; c++) { 
+            for (let r = 0; r < ROWS; r++) { 
+                const cell = cells[c][r]; 
+                if (!cell) continue; 
+                const x = PADDING + c * (exportCellSize + exportGap); 
+                const y = PADDING + r * (exportCellSize + exportGap); 
+                const mainColor = state.palette[cell.level]; 
+                drawCrispCell(tempCtx, x, y, exportCellSize, mainColor, cell.level); 
+            } 
+        } 
+    }
+
+
 
     init();
 });
