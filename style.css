@@ -155,10 +155,9 @@ aside {
     display: flex;
     flex-direction: column;
     gap: 4px; 
-    color: #000000;
+    color: var(--fg-color);
     font-size: 0.75rem;
 }
-
 
 .heatmap-labels-left span {
     height: 10px; 
@@ -171,7 +170,7 @@ aside {
     top: 12px;
     left: 30px;
     display: flex;
-    color: #000000;
+    color: var(--fg-color);
     font-size: 0.75rem;
 }
 

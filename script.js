@@ -1438,7 +1438,7 @@ function drawFrameWithLabels(tempCtx, cells) {
         tempCtx.font = '12px ' + getComputedStyle(document.body).getPropertyValue('--font-family'); 
         
         // Draw Day Labels (Set to Black)
-        tempCtx.fillStyle = '#000000'; 
+        tempCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--fg-color');
         tempCtx.textAlign = 'left'; 
         tempCtx.textBaseline = 'middle'; 
         const dayLabels = ["", "Mon", "", "Wed", "", "Fri", ""]; 
