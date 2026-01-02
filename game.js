@@ -14,7 +14,7 @@ const SHAPES = {
 const SHAPE_KEYS = Object.keys(SHAPES);
 
 
-// --- MODIFIED GAME: Block Auto ---
+// --- EXISTING GAME: Block Auto ---
 // A single player-controlled block dodges incoming Tetris-shaped obstacles.
 class BlockAutoGame {
     constructor(difficulty, palette, initialGrid = null) {
@@ -32,31 +32,24 @@ class BlockAutoGame {
         this.gameOver = false;
         
         this.spawnTimer = 0;
-        // Slower spawn rate
         this.spawnInterval = 4000 / this.difficulty;
-        // Slower obstacle speed that scales gently
         this.obstacleSpeed = 2 + this.difficulty;
     }
 
     spawnObstacle() {
         const type = SHAPE_KEYS[Math.floor(Math.random() * SHAPE_KEYS.length)];
-        let shape = SHAPES[type]; // Use 'let' as shape will be reassigned
+        let shape = SHAPES[type]; 
         const colorIndex = Math.floor(Math.random() * 4) + 1;
         
-        // --- NEW: Randomly rotate the shape before spawning ---
-        const numRotations = Math.floor(Math.random() * 4); // 0, 1, 2, or 3 rotations
+        // Randomly rotate
+        const numRotations = Math.floor(Math.random() * 4); 
         for (let i = 0; i < numRotations; i++) {
-            // This is the standard matrix rotation logic: transpose + reverse rows
             shape = shape[0].map((_, colIndex) => shape.map(row => row[colIndex]).reverse());
         }
-        // --- END NEW ---
 
         const shapeHeight = shape.length;
         const row = Math.floor(Math.random() * (GAME_ROWS - shapeHeight + 1));
-        
-        // Always spawn off-screen to the right
         const col = GAME_COLS; 
-        // Always move to the left
         const dx = -1;
 
         this.obstacles.push({ shape, col, row, colorIndex, dx });
@@ -65,19 +58,16 @@ class BlockAutoGame {
     update(deltaTime, keysPressed) {
         if (this.gameOver) return;
         
-        // --- Player Movement (Now includes Left/Right) ---
         if (keysPressed['w'] || keysPressed['arrowup']) this.player.row = Math.max(0, this.player.row - 1);
         if (keysPressed['s'] || keysPressed['arrowdown']) this.player.row = Math.min(GAME_ROWS - 1, this.player.row + 1);
         if (keysPressed['a'] || keysPressed['arrowleft']) this.player.col = Math.max(0, this.player.col - 1);
         if (keysPressed['d'] || keysPressed['arrowright']) this.player.col = Math.min(GAME_COLS - 1, this.player.col + 1);
         
-        // Clear keys to prevent continuous movement from one press
         keysPressed['w'] = keysPressed['arrowup'] = false;
         keysPressed['s'] = keysPressed['arrowdown'] = false;
         keysPressed['a'] = keysPressed['arrowleft'] = false;
         keysPressed['d'] = keysPressed['arrowright'] = false;
 
-        // --- Obstacle Spawning & Movement ---
         this.spawnTimer += deltaTime;
         if (this.spawnTimer > this.spawnInterval) {
             this.spawnTimer = 0;
@@ -88,24 +78,19 @@ class BlockAutoGame {
             obs.col += obs.dx * this.obstacleSpeed * (deltaTime / 1000);
         });
 
-        // --- Cleanup and Score ---
-        // Only need to check for obstacles that have gone past the left edge
         this.obstacles = this.obstacles.filter(obs => obs.col > -obs.shape[0].length);
-        this.score += deltaTime / 100; // Score increases over time
+        this.score += deltaTime / 100;
 
-        // --- Collision Detection ---
         if (this.checkCollision()) {
             this.gameOver = true;
         }
     }
 
     checkCollision() {
-        // Check against static grid (drawn obstacles)
         if (this.staticGrid && this.staticGrid[this.player.col][this.player.row] !== 0) {
             return true;
         }
 
-        // Check against moving obstacles
         for (const obs of this.obstacles) {
             for (let r = 0; r < obs.shape.length; r++) {
                 for (let c = 0; c < obs.shape[r].length; c++) {
@@ -122,7 +107,11 @@ class BlockAutoGame {
         return false;
     }
 
-    render(ctx, cellSize, gap, drawCellFn) {
+    render(ctx, cellSize, gap, drawCellFn, layerIndex) {
+        // Block Auto currently only runs on the active layer or top layer concept
+        // If we are passed a layerIndex other than 0 (or active), we might choose not to render
+        // But typically this game is single-layer. 
+        
         // Draw static grid if it exists
         if (this.staticGrid) {
             for (let c = 0; c < GAME_COLS; c++) {
@@ -149,76 +138,114 @@ class BlockAutoGame {
         });
 
         // Draw player
-        const playerLevel = 4; // Make player brightest color
+        const playerLevel = 4;
         drawCellFn(ctx, this.player.col * (cellSize + gap), this.player.row * (cellSize + gap), cellSize, this.palette[playerLevel], playerLevel);
     }
 }
 
 
-// --- NEW GAME: Conway's Game of Life ---
-// Evolves the user's drawing based on the rules of GoL. Supports multiple independent instances.
+// --- MODIFIED GAME: Conway's Game of Life ---
+// Evolves the user's drawing based on the rules of GoL. Supports multiple linked layers.
 class GameOfLife {
-    constructor(difficulty, palette, initialCells) {
+    constructor(difficulty, palette) {
         this.palette = palette;
-        this.difficulty = difficulty; // Controls speed
+        this.difficulty = difficulty;
         this.stepInterval = Math.max(50, 500 - this.difficulty * 40);
         this.timer = 0;
-        this.score = 0; // Represents generations
-        this.gameOver = false; // GoL never ends, but required by game loop
+        this.score = 0;
+        this.gameOver = false;
     }
 
-    update(deltaTime, cells) {
-        this.timer += deltaTime;
-        if (this.timer < this.stepInterval) {
-            return;
+    // Helper to check neighbor state, handling seamless vertical connections between layers
+    getSeamlessState(layers, l, c, r) {
+        if (c < 0 || c >= GAME_COLS) return false; // Horizontal edges are dead (or wrap if you wanted horizontal wrapping)
+
+        // Handle vertical wrapping/extension across layers
+        if (r < 0) {
+            // Above top edge of current layer -> Bottom edge of previous layer
+            if (l > 0) return layers[l - 1].cells[c][GAME_ROWS - 1] && layers[l - 1].cells[c][GAME_ROWS - 1].count > 0;
+            return false; // Top of first layer is dead
         }
+        if (r >= GAME_ROWS) {
+            // Below bottom edge of current layer -> Top edge of next layer
+            if (l < layers.length - 1) return layers[l + 1].cells[c][0] && layers[l + 1].cells[c][0].count > 0;
+            return false; // Bottom of last layer is dead
+        }
+
+        // Inside current layer
+        return layers[l].cells[c][r] && layers[l].cells[c][r].count > 0;
+    }
+
+    update(deltaTime, layers) {
+        this.timer += deltaTime;
+        if (this.timer < this.stepInterval) return;
+        
         this.timer = 0;
-        this.score++; // Increment generation count
+        this.score++;
 
-        const currentState = cells.map(col => col.map(cell => cell && cell.count > 0));
-        const nextState = currentState.map(col => [...col]);
+        // 1. Snapshot current state across ALL layers
+        // We use a simplified map of booleans [layer][col][row] to avoid modifying data while reading
+        const currentState = layers.map(layer => 
+            layer.cells.map(col => col.map(cell => cell && cell.count > 0))
+        );
 
-        for (let c = 0; c < GAME_COLS; c++) {
-            for (let r = 0; r < GAME_ROWS; r++) {
-                let liveNeighbors = 0;
-                for (let i = -1; i <= 1; i++) {
-                    for (let j = -1; j <= 1; j++) {
-                        if (i === 0 && j === 0) continue;
-                        const nc = c + i;
-                        const nr = r + j;
-                        if (nc >= 0 && nc < GAME_COLS && nr >= 0 && nr < GAME_ROWS && currentState[nc][nr]) {
-                            liveNeighbors++;
+        // 2. Calculate next state for all layers
+        const nextState = [];
+
+        for (let l = 0; l < layers.length; l++) {
+            const nextLayer = [];
+            for (let c = 0; c < GAME_COLS; c++) {
+                const nextCol = [];
+                for (let r = 0; r < GAME_ROWS; r++) {
+                    let liveNeighbors = 0;
+                    
+                    // Check 8 neighbors
+                    for (let i = -1; i <= 1; i++) {
+                        for (let j = -1; j <= 1; j++) {
+                            if (i === 0 && j === 0) continue;
+                            
+                            // Use custom getter that handles layer bounds
+                            if (this.getSeamlessState(layers, l, c + i, r + j)) {
+                                liveNeighbors++;
+                            }
                         }
                     }
-                }
 
-                const isAlive = currentState[c][r];
-                if (isAlive && (liveNeighbors < 2 || liveNeighbors > 3)) {
-                    nextState[c][r] = false; // Dies
-                } else if (!isAlive && liveNeighbors === 3) {
-                    nextState[c][r] = true; // Becomes alive
+                    const isAlive = currentState[l][c][r];
+                    let nextAlive = isAlive;
+
+                    if (isAlive && (liveNeighbors < 2 || liveNeighbors > 3)) {
+                        nextAlive = false; // Dies
+                    } else if (!isAlive && liveNeighbors === 3) {
+                        nextAlive = true; // Becomes alive
+                    }
+                    nextCol.push(nextAlive);
                 }
+                nextLayer.push(nextCol);
             }
+            nextState.push(nextLayer);
         }
 
-        // Apply the next state back to the main cells data structure
-        for (let c = 0; c < GAME_COLS; c++) {
-            for (let r = 0; r < GAME_ROWS; r++) {
-                if (cells[c][r]) {
-                    if (nextState[c][r]) {
-                        cells[c][r].count = 1; // Or some other value
-                        cells[c][r].level = 1;
+        // 3. Apply state back to the grid objects
+        for (let l = 0; l < layers.length; l++) {
+            for (let c = 0; c < GAME_COLS; c++) {
+                for (let r = 0; r < GAME_ROWS; r++) {
+                    if (nextState[l][c][r]) {
+                        layers[l].cells[c][r].count = 1;
+                        layers[l].cells[c][r].level = 1;
                     } else {
-                        cells[c][r].count = 0;
-                        cells[c][r].level = 0;
+                        layers[l].cells[c][r].count = 0;
+                        layers[l].cells[c][r].level = 0;
                     }
                 }
             }
         }
     }
 
-    // Render is handled by the main script's drawGrid function, so this can be empty.
-    render(ctx, cellSize, gap, drawCellFn) {}
+    render(ctx, cellSize, gap, drawCellFn, layerIndex) {
+        // GoL rendering is handled implicitly by modifying the grid data,
+        // which the main app renders via drawGrid.
+    }
 }
 
 
@@ -277,7 +304,8 @@ class SidewaysTetris {
         }
     }
     
-    render(ctx, cellSize, gap, drawCellFn) {
+    render(ctx, cellSize, gap, drawCellFn, layerIndex) {
+        // Tetris typically single layer
         for (let r = 0; r < GAME_ROWS; r++) {
             for (let c = 0; c < GAME_COLS; c++) {
                 const level = this.grid[r][c];
@@ -348,16 +376,19 @@ class SidewaysTetris {
 }
 
 
-// --- EXISTING GAME: Snake ---
+// --- MODIFIED GAME: Snake ---
+// Seamlessly moves between layers.
 class SnakeGame {
-    constructor(difficulty, palette) {
+    constructor(difficulty, palette, numLayers) {
         this.difficulty = difficulty;
         this.palette = palette;
+        this.numLayers = numLayers;
         this.reset();
     }
 
     reset() {
-        this.snake = [{ x: 10, y: 3 }];
+        // Snake starts on Layer 0
+        this.snake = [{ x: 10, y: 3, layer: 0 }];
         this.direction = { x: 1, y: 0 };
         this.nextDirection = { x: 1, y: 0 };
         this.food = null;
@@ -369,16 +400,25 @@ class SnakeGame {
     }
 
     placeFood() {
-        let foodX, foodY;
-        do {
+        let foodX, foodY, foodLayer;
+        let valid = false;
+        
+        while (!valid) {
             foodX = Math.floor(Math.random() * GAME_COLS);
             foodY = Math.floor(Math.random() * GAME_ROWS);
-        } while (this.snake.some(p => p.x === foodX && p.y === foodY));
-        this.food = { x: foodX, y: foodY };
+            foodLayer = Math.floor(Math.random() * this.numLayers);
+            
+            // Check if food spawns on snake body
+            const onSnake = this.snake.some(p => p.x === foodX && p.y === foodY && p.layer === foodLayer);
+            if (!onSnake) valid = true;
+        }
+        
+        this.food = { x: foodX, y: foodY, layer: foodLayer };
     }
 
     update(deltaTime, keysPressed) {
         if (this.gameOver) return;
+        
         if ((keysPressed['w'] || keysPressed['arrowup']) && this.direction.y === 0) this.nextDirection = { x: 0, y: -1 };
         else if ((keysPressed['s'] || keysPressed['arrowdown']) && this.direction.y === 0) this.nextDirection = { x: 0, y: 1 };
         else if ((keysPressed['a'] || keysPressed['arrowleft']) && this.direction.x === 0) this.nextDirection = { x: -1, y: 0 };
@@ -388,27 +428,77 @@ class SnakeGame {
         if (this.moveCounter > this.moveInterval) {
             this.moveCounter = 0;
             this.direction = this.nextDirection;
-            const head = { x: this.snake[0].x + this.direction.x, y: this.snake[0].y + this.direction.y };
-            if (this.checkCollision(head)) { this.gameOver = true; return; }
-            this.snake.unshift(head);
-            if (head.x === this.food.x && head.y === this.food.y) { this.score += 10; this.placeFood(); } 
-            else { this.snake.pop(); }
+            
+            const head = this.snake[0];
+            let newHead = { 
+                x: head.x + this.direction.x, 
+                y: head.y + this.direction.y, 
+                layer: head.layer 
+            };
+
+            // Handle Layer Transitions (Vertical)
+            if (newHead.y < 0) {
+                if (newHead.layer > 0) {
+                    newHead.layer--;
+                    newHead.y = GAME_ROWS - 1;
+                } else {
+                    // Wall hit top of top layer
+                    this.gameOver = true;
+                    return;
+                }
+            } else if (newHead.y >= GAME_ROWS) {
+                if (newHead.layer < this.numLayers - 1) {
+                    newHead.layer++;
+                    newHead.y = 0;
+                } else {
+                    // Wall hit bottom of bottom layer
+                    this.gameOver = true;
+                    return;
+                }
+            }
+
+            if (this.checkCollision(newHead)) { 
+                this.gameOver = true; 
+                return; 
+            }
+            
+            this.snake.unshift(newHead);
+            
+            if (newHead.x === this.food.x && newHead.y === this.food.y && newHead.layer === this.food.layer) { 
+                this.score += 10; 
+                this.placeFood(); 
+            } else { 
+                this.snake.pop(); 
+            }
         }
     }
     
     checkCollision(head) {
-        if (head.x < 0 || head.x >= GAME_COLS || head.y < 0 || head.y >= GAME_ROWS) return true;
-        for (let i = 1; i < this.snake.length; i++) { if (head.x === this.snake[i].x && head.y === this.snake[i].y) return true; }
+        // Horizontal walls
+        if (head.x < 0 || head.x >= GAME_COLS) return true;
+        
+        // Self collision
+        for (let i = 0; i < this.snake.length; i++) { 
+            if (head.x === this.snake[i].x && head.y === this.snake[i].y && head.layer === this.snake[i].layer) {
+                return true; 
+            }
+        }
         return false;
     }
 
-    render(ctx, cellSize, gap, drawCellFn) {
-        const foodLevel = 1;
-        drawCellFn(ctx, this.food.x * (cellSize + gap), this.food.y * (cellSize + gap), cellSize, this.palette[foodLevel], foodLevel);
+    render(ctx, cellSize, gap, drawCellFn, layerIndex) {
+        // Only draw food if it's on this layer
+        if (this.food && this.food.layer === layerIndex) {
+            const foodLevel = 1;
+            drawCellFn(ctx, this.food.x * (cellSize + gap), this.food.y * (cellSize + gap), cellSize, this.palette[foodLevel], foodLevel);
+        }
 
+        // Only draw snake parts that are on this layer
         this.snake.forEach((part, index) => {
-            const level = (index === 0) ? 4 : 3;
-            drawCellFn(ctx, part.x * (cellSize + gap), part.y * (cellSize + gap), cellSize, this.palette[level], level);
+            if (part.layer === layerIndex) {
+                const level = (index === 0) ? 4 : 3;
+                drawCellFn(ctx, part.x * (cellSize + gap), part.y * (cellSize + gap), cellSize, this.palette[level], level);
+            }
         });
     }
 }

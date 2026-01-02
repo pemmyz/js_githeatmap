@@ -14,6 +14,7 @@ document.addEventListener('DOMContentLoaded', () => {
     const $ = (selector) => document.querySelector(selector);
     const $$ = (selector) => document.querySelectorAll(selector);
     const drawingAreaContainer = $('#drawing-area-container');
+    const mainContent = $('#main-content');
     const totalContributionsContainer = $('#total-contributions-container');
     const themeToggle = $('#theme-toggle');
     const gameModeToggle = $('#game-mode-toggle');
@@ -170,15 +171,9 @@ document.addEventListener('DOMContentLoaded', () => {
         const cells = Array.from({ length: COLS }, () => new Array(ROWS).fill(null));
         const endDate = new Date();
         const startDate = new Date(endDate);
-
-        // Correctly calculate the start date. We want the grid to end with "today".
-        // To do this, we find the Sunday of the current week, and then go back 52 weeks (COLS - 1).
         startDate.setDate(endDate.getDate() - endDate.getDay() - ((COLS - 1) * 7));
 
         let currentDate = new Date(startDate);
-        
-        // A nested loop is clearer for populating a 2D grid.
-        // This ensures every cell is initialized, fixing the "missing cell" issue.
         for (let c = 0; c < COLS; c++) {
             for (let r = 0; r < ROWS; r++) {
                 cells[c][r] = {
@@ -401,10 +396,11 @@ document.addEventListener('DOMContentLoaded', () => {
             
             // Render game elements
             if (state.game.active && activeGames.length > 0) {
-                // For GoL, rendering is implicit via drawGrid.
-                // For other games, they are single-instance and render on the active layer.
-                if (state.game.currentGame !== 'gol' && index === state.activeLayerIndex) {
-                    activeGames[0].render(ctx, cellSize, gap, drawCrispCell);
+                // Game of Life renders via drawGrid (data manipulation)
+                // Other games render explicitly on top of the grid
+                if (state.game.currentGame !== 'gol') {
+                    // Pass current layer index so games like Snake know what to draw where
+                    activeGames[0].render(ctx, cellSize, gap, drawCrispCell, index);
                 }
             }
             
@@ -490,8 +486,6 @@ document.addEventListener('DOMContentLoaded', () => {
         if (!pos) return;
         
         if (!state.game.active) pushUndoState();
-        // Since pushUndoState doesn't always update the UI immediately,
-        // let's manually enable the undo button right away.
         const undoBtn = $('#undo-btn');
         if(undoBtn) undoBtn.disabled = false;
         
@@ -601,16 +595,27 @@ document.addEventListener('DOMContentLoaded', () => {
     // --- LAYERS LOGIC ---
     function addLayer() {
         if (state.game.active) {
+            const gameFrame = state.frames[0];
+            
             if (state.game.currentGame === 'gol') {
-                const gameFrame = state.frames[0];
                 if (gameFrame && gameFrame.layers) {
                     const newLayerCells = generateGridData();
                     gameFrame.layers.push({ cells: newLayerCells });
-                    const newGame = new GameOfLife(state.game.difficulty, state.palette, newLayerCells);
-                    activeGames.push(newGame);
                     state.activeLayerIndex = gameFrame.layers.length - 1;
                     rebuildDrawingAreasDOM();
                 }
+            } else if (state.game.currentGame === 'snake') {
+                // Add new layer for Snake
+                const newLayerCells = generateGridData();
+                gameFrame.layers.push({ cells: newLayerCells });
+                
+                // Update the existing Snake instance
+                if (activeGames.length > 0) {
+                    activeGames[0].numLayers = gameFrame.layers.length;
+                }
+                
+                state.activeLayerIndex = gameFrame.layers.length - 1;
+                rebuildDrawingAreasDOM();
             }
             return;
         }
@@ -628,14 +633,32 @@ document.addEventListener('DOMContentLoaded', () => {
 
     function deleteLayer(layerIndex) {
         if (state.game.active) {
-            if (state.game.currentGame === 'gol') {
-                const gameFrame = state.frames[0];
+            const gameFrame = state.frames[0];
+            
+            // Allow deletion in both GoL and Snake modes
+            if (state.game.currentGame === 'gol' || state.game.currentGame === 'snake') {
                 if (gameFrame.layers.length <= 1) {
-                    alert("Cannot delete the last simulation area.");
+                    alert("Cannot delete the last game area.");
                     return;
                 }
                 gameFrame.layers.splice(layerIndex, 1);
-                activeGames.splice(layerIndex, 1);
+                
+                // Update Snake instance if active
+                if (state.game.currentGame === 'snake' && activeGames.length > 0) {
+                    const game = activeGames[0];
+                    game.numLayers = gameFrame.layers.length;
+                    
+                    // Simple safety check: if snake parts were on the deleted layer (or higher), clamp them
+                    game.snake.forEach(part => {
+                        if (part.layer >= game.numLayers) part.layer = game.numLayers - 1;
+                    });
+                    
+                    // Check food
+                    if (game.food && game.food.layer >= game.numLayers) {
+                        game.placeFood();
+                    }
+                }
+
                 if (state.activeLayerIndex >= layerIndex) {
                     state.activeLayerIndex = Math.max(0, state.activeLayerIndex - 1);
                 }
@@ -1122,8 +1145,8 @@ function applyTheme(theme) {
 
             section.style.opacity = shouldBeDisabled ? '0.5' : '1';
             section.querySelectorAll('button, input, select').forEach(el => {
-                // Special handling for GoL's "Add Draw Area" button
-                if (el.id === 'add-layer-btn' && state.game.active && state.game.currentGame === 'gol') {
+                // Special handling for GoL's and Snake's "Add Draw Area" button
+                if (el.id === 'add-layer-btn' && state.game.active && (state.game.currentGame === 'gol' || state.game.currentGame === 'snake')) {
                     el.disabled = false;
                 } else {
                     el.disabled = shouldBeDisabled;
@@ -1158,11 +1181,11 @@ function applyTheme(theme) {
         }
     
         const gameFrame = state.frames[0];
+        const numLayers = gameFrame.layers.length;
     
         if (state.game.currentGame === 'gol') {
-            gameFrame.layers.forEach(layer => {
-                activeGames.push(new GameOfLife(difficulty, palette, layer.cells));
-            });
+            // Create ONE GoL instance that manages ALL layers
+            activeGames.push(new GameOfLife(difficulty, palette));
             totalContributionsContainer.innerHTML = `Generation: <span id="game-score">0</span>`;
             addLayerBtn.disabled = false;
         } else {
@@ -1170,11 +1193,16 @@ function applyTheme(theme) {
             switch(state.game.currentGame) {
                 case 'block-auto': gameInstance = new BlockAutoGame(difficulty, palette, initialGrid); break;
                 case 'tetris': gameInstance = new SidewaysTetris(palette); break;
-                case 'snake': gameInstance = new SnakeGame(difficulty, palette); break;
+                case 'snake': gameInstance = new SnakeGame(difficulty, palette, numLayers); break;
             }
             if (gameInstance) activeGames.push(gameInstance);
             totalContributionsContainer.innerHTML = `Score: <span id="game-score">0</span>`;
-            addLayerBtn.disabled = true;
+            
+            if (state.game.currentGame === 'snake') {
+                addLayerBtn.disabled = false;
+            } else {
+                addLayerBtn.disabled = true;
+            }
         }
     
         activeGames.forEach(game => game.reset());
@@ -1187,6 +1215,7 @@ function applyTheme(theme) {
         if (state.game.active) {
             gameModeToggle.textContent = '🎨 Drawing';
             $('#game-hud').classList.remove('hidden');
+            mainContent.classList.add('game-seamless'); // CSS to remove gaps
             
             $('#game-select').value = state.game.currentGame;
             $('#game-combined-mode').checked = state.game.combinedMode;
@@ -1208,9 +1237,11 @@ function applyTheme(theme) {
 
         } else {
             gameModeToggle.textContent = '🎮 Game';
+            $('#game-hud').classList.add('hidden');
+            mainContent.classList.remove('game-seamless'); // Restore gaps
+
             setPanelsInteractive(true);
             totalContributionsContainer.innerHTML = `Total Contributions: <span id="total-contributions">0</span>`;
-            $('#game-hud').classList.add('hidden');
             $('#add-layer-btn').disabled = false;
             
             if (editorFramesBackup) {
@@ -1252,10 +1283,8 @@ function applyTheme(theme) {
         if (state.game.active && !state.game.paused && activeGames.length > 0) {
             if (state.game.currentGame === 'gol') {
                 const gameFrame = state.frames[0];
-                activeGames.forEach((game, index) => {
-                    const layerCells = gameFrame.layers[index]?.cells;
-                    if (layerCells) game.update(deltaTime, layerCells);
-                });
+                // Pass ALL layers to the single GoL instance
+                activeGames[0].update(deltaTime, gameFrame.layers);
                 renderAllLayers();
             } else {
                 const game = activeGames[0];
@@ -1284,7 +1313,7 @@ function applyTheme(theme) {
     function newFrame() { if(state.game.active) return; pushUndoState(); const currentFrame = state.frames[state.currentFrameIndex]; const numLayers = currentFrame ? currentFrame.layers.length : 1; const newLayers = []; for (let i=0; i < numLayers; i++) { newLayers.push({ cells: generateGridData() }); } state.frames.push({ layers: newLayers }); state.currentFrameIndex = state.frames.length - 1; rebuildDrawingAreasDOM(); updateFramesUI(); saveState(); }
     function duplicateFrame() { if(state.game.active) return; if (state.frames.length === 0) return; pushUndoState(); const newFrame = JSON.parse(JSON.stringify(state.frames[state.currentFrameIndex])); state.frames.splice(state.currentFrameIndex + 1, 0, newFrame); state.currentFrameIndex++; rebuildDrawingAreasDOM(); updateFramesUI(); saveState(); }
 
-function deleteFrame() { 
+    function deleteFrame() { 
         if(state.game.active) return; 
         if (state.frames.length <= 1) return; 
         
@@ -1298,15 +1327,10 @@ function deleteFrame() {
             state.currentFrameIndex = state.frames.length - 1; 
         } 
         
-        // DIRECTLY call the update functions instead of routing through selectFrame.
-        // selectFrame exits early if the index hasn't changed, which prevents the UI refresh here.
         rebuildDrawingAreasDOM(); 
         updateFramesUI(); 
         saveState(); 
     }
-
-
-
 
     function selectFrame(index) { if (index < 0 || index >= state.frames.length || index === state.currentFrameIndex) return; state.currentFrameIndex = index; rebuildDrawingAreasDOM(); updateUIFromState(); }
     function updateFramesUI() { const list = $('#frames-list'); list.innerHTML = ''; state.frames.forEach((frame, index) => { const item = document.createElement('div'); item.className = 'frame-item'; item.dataset.index = index; if (index === state.currentFrameIndex) item.classList.add('selected'); const thumbCanvas = document.createElement('canvas'); thumbCanvas.width = 106; thumbCanvas.height = 14; const topLayerCells = frame.layers[0]?.cells; if (topLayerCells) { drawThumbnail(thumbCanvas, topLayerCells); } const indexEl = document.createElement('span'); indexEl.className = 'frame-index'; indexEl.textContent = index; item.appendChild(indexEl); item.appendChild(thumbCanvas); item.addEventListener('click', () => selectFrame(index)); item.draggable = true; item.addEventListener('dragstart', handleDragStart); item.addEventListener('dragover', handleDragOver); item.addEventListener('drop', handleDrop); item.addEventListener('dragend', handleDragEnd); list.appendChild(item); }); }
@@ -1421,9 +1445,6 @@ function deleteFrame() {
     function exportFrame(format = 'image/png') { const includeLabels = $('#export-include-labels').checked; const frameCanvas = createFrameCanvas(getActiveCells(), includeLabels); const dataURL = frameCanvas.toDataURL(format); const ext = format.split('/')[1]; downloadFile(dataURL, `frame-${state.currentFrameIndex}-layer-${state.activeLayerIndex}.${ext}`); }
     function createFrameCanvas(cells, includeLabels) { const tempCanvas = document.createElement('canvas'); const tempCtx = tempCanvas.getContext('2d'); if (includeLabels) { drawFrameWithLabels(tempCtx, cells); } else { const exportCellSize = BASE_CELL_SIZE; const exportGap = GAP_SIZE; tempCanvas.width = (exportCellSize + exportGap) * COLS - exportGap; tempCanvas.height = (exportCellSize + exportGap) * ROWS - exportGap; tempCtx.imageSmoothingEnabled = false; tempCtx.fillStyle = getComputedStyle(document.body).getPropertyValue('--bg-color'); tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height); for (let c = 0; c < COLS; c++) { for (let r = 0; r < ROWS; r++) { const cell = cells[c][r]; if (!cell) continue; const x = c * (exportCellSize + exportGap); const y = r * (exportCellSize + exportGap); const mainColor = state.palette[cell.level]; drawCrispCell(tempCtx, x, y, exportCellSize, mainColor, cell.level); } } } return tempCanvas; }
 
-
-
-
 function drawFrameWithLabels(tempCtx, cells) { 
         const PADDING = 30; 
         const exportCellSize = BASE_CELL_SIZE; 
@@ -1444,8 +1465,7 @@ function drawFrameWithLabels(tempCtx, cells) {
         const dayLabels = ["", "Mon", "", "Wed", "", "Fri", ""]; 
         dayLabels.forEach((label, i) => { const y = PADDING + i * (exportCellSize + exportGap) + exportCellSize / 2; tempCtx.fillText(label, 0, y); }); 
         
-        // Draw Month Labels (Set to Black, moved up)
-        // tempCtx.fillStyle is already '#000000' from above, so we don't need to set it again, but valid to keep for clarity
+        // Draw Month Labels
         const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]; 
         let lastMonth = -1; 
         for (let c = 0; c < COLS; c++) { 
@@ -1471,8 +1491,6 @@ function drawFrameWithLabels(tempCtx, cells) {
             } 
         } 
     }
-
-
 
     init();
 });

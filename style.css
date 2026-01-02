@@ -90,11 +90,18 @@ aside {
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
+
 #main-content {
     display: flex;
     flex-direction: column;
     overflow: auto;
-    gap: 24px; /* Space between layers */
+    gap: 24px; /* Default space between layers */
+    padding-bottom: 50px;
+}
+
+/* Reduces gap between layers when Game Mode is active and seamless */
+#main-content.game-seamless {
+    gap: 4px; /* Should match the gap size used in JS drawing */
 }
 
 /* --- Styles for individual drawing areas (layers) --- */
@@ -142,11 +149,10 @@ aside {
     border-color: var(--danger-color);
 }
 
-.heatmap-canvas { /* This is now a class for multiple canvases */
+.heatmap-canvas { 
     cursor: crosshair;
     touch-action: none;
 }
-
 
 .heatmap-labels-left {
     position: absolute;
@@ -162,8 +168,6 @@ aside {
 .heatmap-labels-left span {
     height: 10px; 
 }
-
-
 
 .heatmap-labels-top {
     position: absolute;
@@ -250,20 +254,15 @@ label { display: inline-flex; align-items: center; gap: 4px; font-size: 0.875rem
     flex-direction: column;
     align-items: stretch;
 }
-.system-actions {
-    /* The parent already has display:flex and flex-wrap:wrap from a shared rule. */
-    /* We just need to define how the children behave. */
-}
 
 .system-actions #undo-btn,
 .system-actions #redo-btn {
-    flex-grow: 1; /* This makes them share the available space on the line */
+    flex-grow: 1; 
 }
 
 .system-actions #reset-all-settings {
-    width: 100%; /* This forces it to take up a full line by itself */
+    width: 100%; 
 }
-
 
 /* --- Timeline --- */
 #frames-list {
